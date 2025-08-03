@@ -1,0 +1,68 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: visa-portal-ingress
+  namespace: visa-portal
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+spec:
+  tls:
+  - hosts:
+    - visa-portal.com
+    - www.visa-portal.com
+    - api.visa-portal.com
+    - bot.visa-portal.com
+    secretName: visa-portal-tls
+  rules:
+  - host: visa-portal.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+  - host: www.visa-portal.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+  - host: api.visa-portal.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+  - host: bot.visa-portal.com
+    http:
+      paths:
+      - path: /visa-evaluation
+        pathType: Prefix
+        backend:
+          service:
+            name: visa-evaluation-bot-service
+            port:
+              number: 8000
+      - path: /document-preparation
+        pathType: Prefix
+        backend:
+          service:
+            name: document-preparation-bot-service
+            port:
+              number: 8000 

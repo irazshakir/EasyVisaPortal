@@ -1,0 +1,5 @@
+-r base.txt
+
+# Production specific packages
+sentry-sdk==1.38.0
+django-prometheus==2.3.1 

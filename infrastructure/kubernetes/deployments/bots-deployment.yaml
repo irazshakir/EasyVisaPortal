@@ -1,0 +1,155 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: visa-evaluation-bot
+  namespace: visa-portal
+  labels:
+    app: visa-evaluation-bot
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: visa-evaluation-bot
+  template:
+    metadata:
+      labels:
+        app: visa-evaluation-bot
+        version: v1
+    spec:
+      containers:
+      - name: visa-evaluation-bot
+        image: visa-portal/visa-evaluation-bot:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-secrets
+              key: openai-api-key
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-secrets
+              key: anthropic-api-key
+        - name: WHATSAPP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-secrets
+              key: whatsapp-token
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: redis-url
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      imagePullSecrets:
+      - name: acr-secret
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-preparation-bot
+  namespace: visa-portal
+  labels:
+    app: document-preparation-bot
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: document-preparation-bot
+  template:
+    metadata:
+      labels:
+        app: document-preparation-bot
+        version: v1
+    spec:
+      containers:
+      - name: document-preparation-bot
+        image: visa-portal/document-preparation-bot:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-secrets
+              key: openai-api-key
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-secrets
+              key: anthropic-api-key
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: redis-url
+        - name: MINIO_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: minio-endpoint
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-secrets
+              key: access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-secrets
+              key: secret-key
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      imagePullSecrets:
+      - name: acr-secret 

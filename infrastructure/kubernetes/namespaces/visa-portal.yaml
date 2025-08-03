@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: visa-portal
+  labels:
+    name: visa-portal
+    environment: production 

@@ -1,0 +1,147 @@
+version: '3.8'
+
+services:
+  # Frontend
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    volumes:
+      - ../../frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_BOT_API_URL=http://localhost:8001
+    depends_on:
+      - backend
+
+  # Django Backend
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../../backend:/app
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgresql://postgres:password@db:5432/visa_portal
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=your-secret-key-here
+    depends_on:
+      - db
+      - redis
+
+  # Visa Evaluation Bot
+  visa-evaluation-bot:
+    build:
+      context: ../../bots/visa_evaluation_bot
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8000"
+    volumes:
+      - ../../bots/visa_evaluation_bot:/app
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - WHATSAPP_TOKEN=${WHATSAPP_TOKEN}
+      - DATABASE_URL=postgresql://postgres:password@db:5432/visa_portal
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  # Document Preparation Bot
+  document-preparation-bot:
+    build:
+      context: ../../bots/document_preparation_bot
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    volumes:
+      - ../../bots/document_preparation_bot:/app
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=postgresql://postgres:password@db:5432/visa_portal
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    depends_on:
+      - db
+      - redis
+      - minio
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=visa_portal
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+
+  # Celery Worker
+  celery:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: celery -A visa_portal worker -l info
+    volumes:
+      - ../../backend:/app
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgresql://postgres:password@db:5432/visa_portal
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  # Celery Beat
+  celery-beat:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: celery -A visa_portal beat -l info
+    volumes:
+      - ../../backend:/app
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgresql://postgres:password@db:5432/visa_portal
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data: 

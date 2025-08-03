@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: visa-portal
+data:
+  redis-url: "redis://redis-service:6379/0"
+  minio-endpoint: "minio-service:9000"
+  environment: "production"
+  debug: "false" 
