@@ -2,7 +2,7 @@
 Chat-related Pydantic models
 """
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 
 
@@ -15,6 +15,8 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     """Response model for chat interactions"""
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+    
     session_id: str
     message: str
     state: str
@@ -24,6 +26,8 @@ class ChatResponse(BaseModel):
 
 class ChatMessage(BaseModel):
     """Individual chat message model"""
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+    
     role: str = Field(..., pattern="^(user|assistant|system)$")
     content: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -32,6 +36,8 @@ class ChatMessage(BaseModel):
 
 class ConversationHistory(BaseModel):
     """Conversation history model"""
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+    
     session_id: str
     messages: list[ChatMessage] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -28,14 +28,14 @@ class SessionService:
         # Store session info in Redis
         await redis_client.set_session_data(
             f"session_info:{session_id}",
-            session_info.dict()
+            session_info.model_dump()
         )
         
         # Initialize conversation history
         conversation = ConversationHistory(session_id=session_id)
         await redis_client.set_session_data(
             f"conversation:{session_id}",
-            conversation.dict()
+            conversation.model_dump()
         )
         
         logger.info(f"Created new session: {session_id}")
@@ -65,7 +65,7 @@ class SessionService:
             session.last_activity = datetime.utcnow()
             await redis_client.set_session_data(
                 f"session_info:{session_id}",
-                session.dict()
+                session.model_dump()
             )
     
     async def end_session(self, session_id: str):
@@ -75,7 +75,7 @@ class SessionService:
             session.is_active = False
             await redis_client.set_session_data(
                 f"session_info:{session_id}",
-                session.dict()
+                session.model_dump()
             )
             logger.info(f"Ended session: {session_id}")
     
@@ -130,7 +130,7 @@ class SessionService:
         # Save updated conversation
         await redis_client.set_session_data(
             f"conversation:{session_id}",
-            conversation.dict()
+            conversation.model_dump()
         )
     
     async def get_chat_history(self, session_id: str) -> List[ChatMessage]:
@@ -148,6 +148,6 @@ class SessionService:
         conversation = ConversationHistory(session_id=session_id)
         await redis_client.set_session_data(
             f"conversation:{session_id}",
-            conversation.dict()
+            conversation.model_dump()
         )
         logger.info(f"Cleared history for session: {session_id}") 

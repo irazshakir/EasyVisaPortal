@@ -26,8 +26,9 @@ class DatabaseService:
         """Test database connection"""
         try:
             # Simple query to test connection
-            result = await self.db.execute("SELECT 1")
-            await result.fetchone()
+            from sqlalchemy import text
+            result = await self.db.execute(text("SELECT 1"))
+            result.fetchone()
             return True
         except Exception as e:
             logger.error(f"Database connection test failed: {e}")

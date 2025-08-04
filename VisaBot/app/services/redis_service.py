@@ -4,10 +4,19 @@ Redis service for session and state management
 import json
 import asyncio
 from typing import Optional, Dict, Any
+from datetime import datetime
 from redis.asyncio import Redis
 from loguru import logger
 
 from app.core.config import settings
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles datetime objects"""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 
 class RedisService:
@@ -42,7 +51,7 @@ class RedisService:
             await self.connect()
         
         key = f"session:{session_id}"
-        await self.redis.set(key, json.dumps(data), ex=ttl or settings.BOT_SESSION_TIMEOUT)
+        await self.redis.set(key, json.dumps(data, cls=DateTimeEncoder), ex=ttl or settings.BOT_SESSION_TIMEOUT)
     
     async def get_session_data(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Get session data from Redis"""

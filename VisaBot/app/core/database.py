@@ -17,6 +17,12 @@ async def init_database():
     """Initialize database connection"""
     global engine, AsyncSessionLocal
     
+    # If engine already exists, dispose it first
+    if engine:
+        await engine.dispose()
+        engine = None
+        AsyncSessionLocal = None
+    
     # Construct DATABASE_URL from individual components if not provided
     database_url = settings.DATABASE_URL
     if not database_url and all([settings.DB_USER, settings.DB_PASSWORD, settings.DB_HOST, settings.DB_PORT, settings.DB_NAME]):
@@ -28,14 +34,28 @@ async def init_database():
         return
     
     try:
-        # Convert sync URL to async URL for Supabase
+        # Convert sync URL to async URL for Supabase and add PgBouncer compatibility
         async_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+        
+        # Add PgBouncer compatibility parameters to URL
+        if "?" in async_url:
+            async_url += "&statement_cache_size=0&prepared_statement_cache_size=0"
+        else:
+            async_url += "?statement_cache_size=0&prepared_statement_cache_size=0"
         
         engine = create_async_engine(
             async_url,
             echo=settings.DEBUG,
             pool_pre_ping=True,
             pool_recycle=300,
+            # Disable prepared statements for PgBouncer compatibility
+            connect_args={
+                "statement_cache_size": 0,
+                "prepared_statement_cache_size": 0,
+                "server_settings": {
+                    "jit": "off"
+                }
+            }
         )
         
         AsyncSessionLocal = async_sessionmaker(
