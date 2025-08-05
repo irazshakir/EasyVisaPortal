@@ -129,6 +129,8 @@ class ChatService:
             
             # Calculate progress
             state_order = [
+                FSMStates.GREETING,
+                FSMStates.ASK_COUNTRY,
                 FSMStates.ASK_PROFESSION,
                 FSMStates.ASK_TAX_INFO,
                 FSMStates.ASK_BALANCE,
@@ -164,7 +166,7 @@ class ChatService:
             return {
                 "session_id": session_id,
                 "message": "Session reset successfully. You can start a new visa evaluation.",
-                "state": FSMStates.ASK_PROFESSION.value
+                "state": FSMStates.GREETING.value
             }
             
         except Exception as e:

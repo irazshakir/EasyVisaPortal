@@ -32,7 +32,7 @@ class SessionService:
         
         # Initialize session data in memory
         self.sessions[session_id] = {
-            "state": FSMStates.ASK_PROFESSION.value,
+            "state": FSMStates.GREETING.value,
             "answers": {},
             "created_at": session_info.created_at,
             "last_activity": session_info.last_activity,
@@ -92,7 +92,7 @@ class SessionService:
     async def reset_session(self, session_id: str):
         """Reset session to initial state"""
         if session_id in self.sessions:
-            self.sessions[session_id]["state"] = FSMStates.ASK_PROFESSION.value
+            self.sessions[session_id]["state"] = FSMStates.GREETING.value
             self.sessions[session_id]["answers"] = {}
             self.sessions[session_id]["last_activity"] = datetime.utcnow()
             

@@ -10,6 +10,9 @@ from app.services.redis_service import redis_client
 
 class FSMStates(Enum):
     """FSM States for visa evaluation"""
+    GREETING = "greeting"
+    ASK_COUNTRY = "ask_country"
+    COUNTRY_NOT_SUPPORTED = "country_not_supported"
     ASK_PROFESSION = "ask_profession"
     ASK_TAX_INFO = "ask_tax_info"
     ASK_BALANCE = "ask_balance"
@@ -23,24 +26,105 @@ class VisaEvaluationFSM:
     
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.current_state = FSMStates.ASK_PROFESSION
+        self.current_state = FSMStates.GREETING
         self.answers: Dict[str, Any] = {}
         
         # Questions for each state
         self.questions = {
-            FSMStates.ASK_PROFESSION: "Are you a business person or job holder?",
+            FSMStates.GREETING: "Welcome to Easy Visa PK free visa success ratio evaluation. I am here to assist and answer your questions. Which Country visa are you interested to apply?",
+            FSMStates.ASK_COUNTRY: "Which Country visa are you interested to apply?",
+            FSMStates.COUNTRY_NOT_SUPPORTED: "At the moment we are not providing Visa Success ratio evaluation for this country. We are only assisting in Schengen visas. Would you like to evaluate for a Schengen country instead?",
+            FSMStates.ASK_PROFESSION: "Great! I'm going to ask you some questions to evaluate your success ratio. Are you a business person or job holder?",
             FSMStates.ASK_TAX_INFO: "Are you a tax filer? If yes, what was your annual income in the last tax return?",
             FSMStates.ASK_BALANCE: "Can you manage a closing balance of 2 million PKR?",
             FSMStates.ASK_TRAVEL: "What is your previous travel history in the last 5 years?"
+        }
+        
+        # Supported countries (Schengen/Europe)
+        self.supported_countries = {
+            "europe", "schengen", "france", "italy", "spain", "ireland", "portugal", 
+            "germany", "belgium", "netherlands", "holland", "poland", "bulgaria", 
+            "norway", "denmark", "greece", "hungary", "austria", "switzerland", 
+            "luxembourg", "slovenia", "slovakia", "czech republic", "czech", 
+            "estonia", "latvia", "lithuania", "malta", "iceland", "liechtenstein",
+            "finland", "sweden", "croatia", "romania", "cyprus"
+        }
+        
+        # Non-supported countries
+        self.non_supported_countries = {
+            "usa", "united states", "america", "canada", "uk", "united kingdom", 
+            "britain", "england", "australia", "new zealand", "japan", "singapore", 
+            "malaysia", "thailand", "china", "india", "pakistan", "bangladesh", 
+            "sri lanka", "nepal", "bhutan", "maldives", "afghanistan", "iran", 
+            "iraq", "syria", "lebanon", "jordan", "israel", "palestine", "egypt", 
+            "libya", "tunisia", "algeria", "morocco", "mauritania", "mali", 
+            "niger", "chad", "sudan", "south sudan", "ethiopia", "eritrea", 
+            "djibouti", "somalia", "kenya", "uganda", "tanzania", "rwanda", 
+            "burundi", "central african republic", "cameroon", "nigeria", 
+            "benin", "togo", "ghana", "cote d'ivoire", "ivory coast", 
+            "liberia", "sierra leone", "guinea", "guinea-bissau", "senegal", 
+            "gambia", "cape verde", "sao tome and principe", "equatorial guinea", 
+            "gabon", "congo", "congo brazzaville", "congo kinshasa", "democratic republic of congo", 
+            "angola", "zambia", "zimbabwe", "botswana", "namibia", "south africa", 
+            "lesotho", "eswatini", "swaziland", "mozambique", "madagascar", 
+            "comoros", "seychelles", "mauritius", "reunion", "mayotte"
         }
     
     def get_current_question(self) -> str:
         """Get the current question for the user"""
         return self.questions.get(self.current_state, "")
     
+    def _is_supported_country(self, user_input: str) -> bool:
+        """Check if the user input indicates a supported country"""
+        input_lower = user_input.lower().strip()
+        
+        # Check for supported countries
+        for country in self.supported_countries:
+            if country in input_lower:
+                return True
+        
+        return False
+    
+    def _is_non_supported_country(self, user_input: str) -> bool:
+        """Check if the user input indicates a non-supported country"""
+        input_lower = user_input.lower().strip()
+        
+        # Check for non-supported countries
+        for country in self.non_supported_countries:
+            if country in input_lower:
+                return True
+        
+        return False
+    
     def get_next_state(self, current_state: FSMStates, user_input: str) -> Tuple[FSMStates, str]:
         """Determine next state based on current state and user input"""
-        if current_state == FSMStates.ASK_PROFESSION:
+        if current_state == FSMStates.GREETING:
+            # After greeting, always ask for country
+            return FSMStates.ASK_COUNTRY, self.questions[FSMStates.ASK_COUNTRY]
+        
+        elif current_state == FSMStates.ASK_COUNTRY:
+            # Check if user mentioned a supported country
+            if self._is_supported_country(user_input):
+                # Store the selected country
+                self.answers["selected_country"] = user_input
+                return FSMStates.ASK_PROFESSION, self.questions[FSMStates.ASK_PROFESSION]
+            elif self._is_non_supported_country(user_input):
+                # Store the unsupported country and inform user
+                self.answers["unsupported_country"] = user_input
+                return FSMStates.COUNTRY_NOT_SUPPORTED, self.questions[FSMStates.COUNTRY_NOT_SUPPORTED]
+            else:
+                # Unclear response, ask again
+                return FSMStates.ASK_COUNTRY, "I didn't understand. Please specify which country visa you're interested in (e.g., France, Germany, USA, Canada, etc.)."
+        
+        elif current_state == FSMStates.COUNTRY_NOT_SUPPORTED:
+            # Check if user wants to try a Schengen country
+            input_lower = user_input.lower().strip()
+            if any(word in input_lower for word in ["yes", "sure", "okay", "ok", "alright", "schengen", "europe"]):
+                return FSMStates.ASK_COUNTRY, "Great! Which Schengen country would you like to evaluate for? (e.g., France, Germany, Italy, Spain, etc.)"
+            else:
+                return FSMStates.COMPLETE, "Thank you for your interest. We currently only provide visa evaluation services for Schengen countries. Feel free to contact us again when you're interested in a Schengen visa."
+        
+        elif current_state == FSMStates.ASK_PROFESSION:
             return FSMStates.ASK_TAX_INFO, self.questions[FSMStates.ASK_TAX_INFO]
         
         elif current_state == FSMStates.ASK_TAX_INFO:
@@ -163,7 +247,7 @@ class FSMService:
             
             if state_data:
                 # Restore state and answers
-                state_name = state_data.get('state', 'ask_profession')
+                state_name = state_data.get('state', 'greeting')
                 fsm.current_state = FSMStates(state_name)
                 fsm.answers = state_data.get('answers', {})
                 logger.info(f"Restored FSM state for session {session_id}: {fsm.current_state.value}")
@@ -220,7 +304,16 @@ class FSMService:
         logger.info(f"Current FSM answers before processing: {fsm.answers}")
         
         # Store the answer
-        if fsm.current_state == FSMStates.ASK_PROFESSION:
+        if fsm.current_state == FSMStates.GREETING:
+            # No specific answer to store here, just move to next state
+            pass
+        elif fsm.current_state == FSMStates.ASK_COUNTRY:
+            # No specific answer to store here, just move to next state
+            pass
+        elif fsm.current_state == FSMStates.COUNTRY_NOT_SUPPORTED:
+            # No specific answer to store here, just move to next state
+            pass
+        elif fsm.current_state == FSMStates.ASK_PROFESSION:
             fsm.answers["profession"] = user_input
             logger.info(f"Stored profession answer: {user_input}")
         elif fsm.current_state == FSMStates.ASK_TAX_INFO:
@@ -306,7 +399,7 @@ class FSMService:
         """Reset session to initial state"""
         if session_id in self.fsm_instances:
             fsm = self.fsm_instances[session_id]
-            fsm.current_state = FSMStates.ASK_PROFESSION
+            fsm.current_state = FSMStates.GREETING
             fsm.answers = {}
             await self.save_fsm_state(session_id)
             logger.info(f"Reset session {session_id} to initial state")

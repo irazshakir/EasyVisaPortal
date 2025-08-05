@@ -55,15 +55,25 @@ VisaBot/
 
 The bot operates through these states:
 
-1. **greeting** - Welcome and initial interaction
-2. **collecting_info** - Gather user information
-3. **visa_type_selection** - Help choose visa type
-4. **document_upload** - Guide document submission
-5. **application_review** - Review application details
-6. **payment** - Handle payment process
-7. **confirmation** - Confirm submission
-8. **help** - Provide assistance
-9. **error** - Handle errors gracefully
+1. **greeting** - Welcome message and initial greeting
+2. **ask_country** - Ask user which country visa they're interested in
+3. **country_not_supported** - Handle unsupported countries (USA, Canada, UK, Australia, etc.)
+4. **ask_profession** - Ask about profession (business person or job holder)
+5. **ask_tax_info** - Ask about tax filing and annual income
+6. **ask_balance** - Ask about closing balance (2M PKR requirement)
+7. **ask_travel** - Ask about previous travel history
+8. **evaluation** - Perform visa success ratio evaluation
+9. **complete** - Evaluation complete
+
+## Supported Countries
+
+The bot currently supports visa evaluation for **Schengen/European countries**:
+- France, Germany, Italy, Spain, Netherlands, Belgium, Switzerland
+- Austria, Portugal, Greece, Hungary, Poland, Czech Republic
+- Norway, Denmark, Sweden, Finland, Iceland, Luxembourg
+- And other Schengen zone countries
+
+**Non-supported countries** (USA, Canada, UK, Australia, etc.) will be informed that only Schengen visa evaluation is available.
 
 ## Quick Start
 
