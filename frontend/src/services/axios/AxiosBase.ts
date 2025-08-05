@@ -12,7 +12,7 @@ const axiosInstance = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
-    withCredentials: true, // Important for CORS with credentials
+    withCredentials: false, // Disable credentials for VisaBot API
 })
 
 // Request interceptor for adding auth token

@@ -19,6 +19,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     full_name = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    nationality = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     is_active = Column(Boolean, default=True)
@@ -32,7 +33,7 @@ class ChatSession(Base):
     id = Column(String, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=True)
     session_id = Column(String, unique=True, index=True, nullable=False)
-    current_state = Column(String, default="greeting")
+    current_state = Column(String, default="ask_profession")  # Updated to match FSM initial state
     context = Column(JSON, default={})  # Stores FSM evaluation context
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -51,7 +52,7 @@ class ChatMessage(Base):
     
     id = Column(String, primary_key=True, index=True)
     session_id = Column(String, ForeignKey("chat_sessions.session_id"), nullable=False)
-    is_user_message = Column(Boolean, nullable=False)  # True for user, False for bot
+    role = Column(String, nullable=False)  # "user", "assistant", "system" - aligned with database service
     content = Column(Text, nullable=False)
     message_metadata = Column(JSON, nullable=True)  # Intent, confidence, evaluation step
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -75,7 +76,7 @@ class VisaEvaluation(Base):
     purpose_of_travel = Column(String, nullable=False)
     travel_dates = Column(JSON, nullable=True)  # {"start": "2024-01-01", "end": "2024-01-15"}
     
-    # User profile information
+    # User profile information from FSM answers
     nationality = Column(String, nullable=True)
     current_residence = Column(String, nullable=True)
     employment_status = Column(String, nullable=True)  # employed, student, retired, etc.
@@ -87,7 +88,7 @@ class VisaEvaluation(Base):
     risk_level = Column(String, nullable=True)  # low, medium, high
     
     # Detailed assessment
-    evaluation_data = Column(JSON, nullable=True)  # All collected evaluation data
+    evaluation_data = Column(JSON, nullable=True)  # All collected evaluation data from FSM
     assessment_notes = Column(Text, nullable=True)  # Detailed assessment notes
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

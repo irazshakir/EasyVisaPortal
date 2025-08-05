@@ -1,196 +1,220 @@
 """
-Main chat service that orchestrates FSM, OpenAI, and session management
+Chat service for visa evaluation bot - integrates FSM, OpenAI, and session services
 """
 from typing import Dict, Any, Optional
 from loguru import logger
 
-from app.services.fsm_service import fsm_service
-from app.services.openai_service import OpenAIService
-from app.services.session_service import SessionService
-from app.models.chat import ChatResponse
+from app.services.fsm_service import fsm_service, FSMStates
+from app.services.openai_service import openai_service
+from app.services.session_service import session_service
+from app.models.chat import ChatRequest, ChatResponse
 
 
 class ChatService:
-    """Main chat service for bot interactions"""
+    """Main chat service for visa evaluation bot"""
     
     def __init__(self):
-        self.openai_service = OpenAIService()
-        self.session_service = SessionService()
+        self.openai_service = openai_service
     
-    async def process_message(
-        self,
-        session_id: str,
-        message: str,
-        context: Optional[Dict[str, Any]] = None
-    ) -> ChatResponse:
-        """Process user message and generate response"""
+    async def process_chat_message(self, chat_request: ChatRequest) -> ChatResponse:
+        """
+        Process a chat message and return appropriate response
+        This is the main entry point for the visa evaluation bot
+        """
         try:
-            # Get current FSM state
-            state_info = await fsm_service.get_current_state(session_id)
-            current_state = state_info['current_state']
+            # Get or create session
+            session_id, session_data = await session_service.get_or_create_session(chat_request.session_id)
             
-            # Analyze user intent
-            intent_analysis = await self.openai_service.analyze_intent(message)
+            # Get current FSM state from FSM service (single source of truth)
+            fsm_state_info = await fsm_service.get_current_state(session_id)
+            current_state = FSMStates(fsm_state_info["current_state"])
+            logger.info(f"Chat service - Session {session_id} - Current state: {current_state.value}")
+            logger.info(f"Chat service - FSM state info: {fsm_state_info}")
+            logger.info(f"Chat service - FSM answers: {fsm_state_info.get('answers', {})}")
             
-            # Store message in session history
-            await self.session_service.add_message(session_id, "user", message)
+            # Check if this is the very first message in the conversation
+            chat_history = await session_service.get_chat_history(session_id)
+            is_first_message = len(chat_history) == 0
             
-            # Generate response based on current state and intent
-            response_message = await self._generate_state_response(
-                session_id, current_state, message, intent_analysis, context
-            )
+            # If this is the first message, send the initial question
+            if is_first_message:
+                # Get the initial question from FSM
+                fsm = await fsm_service.get_fsm(session_id)
+                initial_question = fsm.get_current_question()
+                
+                # Add assistant message to history
+                await session_service.add_message(session_id, "assistant", initial_question)
+                
+                return ChatResponse(
+                    session_id=session_id,
+                    message=initial_question,
+                    state=current_state.value,
+                    metadata={"is_initial": True}
+                )
             
-            # Store bot response in session history
-            await self.session_service.add_message(session_id, "assistant", response_message)
+            # Add user message to history
+            await session_service.add_message(session_id, "user", chat_request.message)
             
-            # Update session activity
-            await self.session_service.update_activity(session_id)
+            # Process the message based on current state
+            if current_state == FSMStates.COMPLETE:
+                # Session is complete, offer to restart
+                response_message = "Your visa evaluation is complete. Would you like to start a new evaluation?"
+                await session_service.add_message(session_id, "assistant", response_message)
+                
+                return ChatResponse(
+                    session_id=session_id,
+                    message=response_message,
+                    state=current_state.value,
+                    metadata={"is_complete": True}
+                )
+            
+            # Parse user input using OpenAI
+            parsed_input = await self.openai_service.parse_user_input(current_state, chat_request.message)
+            
+            # Process with FSM
+            logger.info(f"Processing user input for session {session_id} in state {current_state.value}")
+            fsm_result = await fsm_service.process_user_input(session_id, chat_request.message)
+            logger.info(f"FSM result: {fsm_result}")
+            
+            # Update session with new state and parsed data
+            next_state = FSMStates(fsm_result["current_state"])
+            logger.info(f"Chat service - Moving to next state: {next_state.value}")
+            
+            # Update session service to keep it in sync with FSM
+            await session_service.update_session(session_id, next_state, fsm_result["answers"])
+            
+            # Use FSM question/response - DO NOT generate with OpenAI
+            response_message = fsm_result["question"]
+            logger.info(f"Using FSM response: {response_message}")
+            
+            # Add assistant message to history
+            await session_service.add_message(session_id, "assistant", response_message)
             
             return ChatResponse(
                 session_id=session_id,
                 message=response_message,
-                state=current_state,
+                state=next_state.value,
                 metadata={
-                    "intent": intent_analysis,
-                    "context": state_info['context']
+                    "parsed_input": parsed_input,
+                    "is_complete": fsm_result["is_complete"],
+                    "answers": fsm_result["answers"]
                 }
             )
             
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
+            logger.error(f"Error processing chat message: {e}")
+            
+            # Return error response
+            error_message = "I apologize, but I encountered an error processing your request. Please try again."
+            
+            if chat_request.session_id:
+                await session_service.add_message(chat_request.session_id, "assistant", error_message)
+            
             return ChatResponse(
-                session_id=session_id,
-                message="I apologize, but I encountered an error. Please try again.",
+                session_id=chat_request.session_id or "error",
+                message=error_message,
                 state="error",
                 metadata={"error": str(e)}
             )
     
-    async def _generate_state_response(
-        self,
-        session_id: str,
-        current_state: str,
-        user_message: str,
-        intent_analysis: Dict[str, Any],
-        context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Generate response based on current state"""
-        
-        # Get conversation history
-        history = await self.session_service.get_chat_history(session_id)
-        messages = [{"role": msg.role, "content": msg.content} for msg in history[-5:]]  # Last 5 messages
-        
-        # State-specific system prompts
-        system_prompts = {
-            "greeting": """You are a helpful visa application assistant. Welcome the user warmly and ask how you can help them with their visa application process.""",
+    async def get_session_status(self, session_id: str) -> Dict[str, Any]:
+        """Get current session status and progress"""
+        try:
+            session_data = await session_service.get_session(session_id)
+            if not session_data:
+                return {"error": "Session not found"}
             
-            "collecting_info": """You are collecting basic information for visa application. Ask for:
-            - Full name
-            - Nationality
-            - Purpose of travel
-            - Destination country
-            - Travel dates
-            Be friendly and professional.""",
+            current_state = session_service.get_session_state(session_id)
+            answers = session_service.get_session_answers(session_id)
             
-            "visa_type_selection": """Help the user select the appropriate visa type based on their information. 
-            Common types: Tourist, Business, Student, Work, Transit.
-            Explain requirements for each type briefly.""",
+            # Calculate progress
+            state_order = [
+                FSMStates.ASK_PROFESSION,
+                FSMStates.ASK_TAX_INFO,
+                FSMStates.ASK_BALANCE,
+                FSMStates.ASK_TRAVEL,
+                FSMStates.EVALUATION,
+                FSMStates.COMPLETE
+            ]
             
-            "document_upload": """Guide the user through document upload process. 
-            Explain what documents are required and how to upload them.
-            Common documents: Passport, Photos, Financial statements, Travel itinerary.""",
+            try:
+                progress = (state_order.index(current_state) + 1) / len(state_order) * 100
+            except ValueError:
+                progress = 0
             
-            "application_review": """Review the application with the user. 
-            Summarize the information collected and ask for confirmation.
-            Mention any missing documents or information.""",
+            return {
+                "session_id": session_id,
+                "current_state": current_state.value if current_state else "unknown",
+                "progress": progress,
+                "answers": answers,
+                "is_complete": current_state == FSMStates.COMPLETE,
+                "last_activity": session_data["last_activity"]
+            }
             
-            "payment": """Guide the user through payment process.
-            Explain the fees and payment methods available.
-            Be clear about what the payment covers.""",
-            
-            "confirmation": """Confirm the application submission.
-            Provide next steps and timeline.
-            Thank the user for using the service.""",
-            
-            "help": """Provide helpful information about the visa application process.
-            Answer common questions and guide users back to the main flow.""",
-            
-            "error": """Apologize for the error and help the user get back on track.
-            Offer to restart the process or provide help."""
-        }
-        
-        system_prompt = system_prompts.get(current_state, system_prompts["greeting"])
-        
-        # Add state context to system prompt
-        state_context = await fsm_service.get_current_state(session_id)
-        if state_context['context']:
-            context_info = f"Current context: {state_context['context']}"
-            system_prompt += f"\n\n{context_info}"
-        
-        # Generate response using OpenAI
-        response = await self.openai_service.generate_response(
-            messages=messages,
-            system_prompt=system_prompt,
-            context=context
-        )
-        
-        # Handle state transitions based on intent
-        await self._handle_state_transition(session_id, current_state, intent_analysis, user_message)
-        
-        return response
+        except Exception as e:
+            logger.error(f"Error getting session status: {e}")
+            return {"error": str(e)}
     
-    async def _handle_state_transition(
-        self,
-        session_id: str,
-        current_state: str,
-        intent_analysis: Dict[str, Any],
-        user_message: str
-    ):
-        """Handle state transitions based on intent and current state"""
-        
-        intent = intent_analysis.get("intent", "unknown")
-        confidence = intent_analysis.get("confidence", 0.0)
-        
-        # Only transition if confidence is high enough
-        if confidence < 0.7:
-            return
-        
-        # State-specific transition logic
-        if current_state == "greeting":
-            if intent in ["visa_info", "document_upload", "application_status"]:
-                await fsm_service.transition(session_id, "start")
-        
-        elif current_state == "collecting_info":
-            # Check if we have enough information
-            state_info = await fsm_service.get_current_state(session_id)
-            context = state_info['context']
+    async def reset_session(self, session_id: str) -> Dict[str, Any]:
+        """Reset a session to start over"""
+        try:
+            await session_service.reset_session(session_id)
+            await fsm_service.reset_session(session_id)
             
-            required_fields = ["full_name", "nationality", "purpose", "destination", "travel_dates"]
-            if all(field in context for field in required_fields):
-                await fsm_service.transition(session_id, "info_complete")
-        
-        elif current_state == "visa_type_selection":
-            if "visa_type" in intent_analysis.get("entities", {}):
-                visa_type = intent_analysis["entities"]["visa_type"]
-                await fsm_service.transition(session_id, "type_selected", visa_type=visa_type)
-        
-        elif current_state == "document_upload":
-            if intent == "document_upload":
-                await fsm_service.transition(session_id, "documents_uploaded")
-        
-        elif current_state == "application_review":
-            if "confirm" in user_message.lower() or "yes" in user_message.lower():
-                await fsm_service.transition(session_id, "review_approved")
-            elif "no" in user_message.lower() or "change" in user_message.lower():
-                await fsm_service.transition(session_id, "review_rejected")
-        
-        elif current_state == "payment":
-            if "payment_complete" in user_message.lower() or "paid" in user_message.lower():
-                await fsm_service.transition(session_id, "payment_complete")
-        
-        # Handle help requests from any state
-        if intent == "help":
-            await fsm_service.transition(session_id, "help_request")
-        
-        # Handle restart requests
-        if intent == "goodbye" or "restart" in user_message.lower():
-            await fsm_service.transition(session_id, "restart") 
+            return {
+                "session_id": session_id,
+                "message": "Session reset successfully. You can start a new visa evaluation.",
+                "state": FSMStates.ASK_PROFESSION.value
+            }
+            
+        except Exception as e:
+            logger.error(f"Error resetting session: {e}")
+            return {"error": str(e)}
+    
+    async def get_evaluation_summary(self, session_id: str) -> Dict[str, Any]:
+        """Get evaluation summary for completed sessions"""
+        try:
+            session_data = await session_service.get_session(session_id)
+            if not session_data:
+                return {"error": "Session not found"}
+            
+            current_state = session_service.get_session_state(session_id)
+            if current_state != FSMStates.COMPLETE:
+                return {"error": "Evaluation not complete"}
+            
+            answers = session_service.get_session_answers(session_id)
+            evaluation = answers.get("evaluation", {})
+            
+            return {
+                "session_id": session_id,
+                "evaluation": evaluation,
+                "answers": answers,
+                "summary": {
+                    "eligible": evaluation.get("eligible", False),
+                    "score": evaluation.get("score", 0),
+                    "confidence": evaluation.get("confidence", 0),
+                    "recommendations": evaluation.get("recommendations", []),
+                    "risk_factors": evaluation.get("risk_factors", []),
+                    "next_steps": evaluation.get("next_steps", [])
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting evaluation summary: {e}")
+            return {"error": str(e)}
+    
+    async def list_active_sessions(self) -> Dict[str, Any]:
+        """List all active sessions"""
+        try:
+            sessions = await session_service.list_sessions()
+            return {
+                "sessions": sessions,
+                "count": len(sessions)
+            }
+        except Exception as e:
+            logger.error(f"Error listing sessions: {e}")
+            return {"error": str(e)}
+
+
+# Global chat service instance
+chat_service = ChatService() 

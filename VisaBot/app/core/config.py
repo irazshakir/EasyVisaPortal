@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     
     # CORS settings
-    ALLOWED_HOSTS: List[str] = ["*"]
+    ALLOWED_HOSTS: List[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"]
     
     # OpenAI settings
     OPENAI_API_KEY: str

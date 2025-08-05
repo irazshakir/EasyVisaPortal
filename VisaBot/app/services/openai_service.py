@@ -118,4 +118,74 @@ class OpenAIService:
                 "entities": {},
                 "requires_action": False,
                 "next_state": "greeting"
-            } 
+            }
+    
+    async def parse_user_input(self, state: str, user_input: str) -> Dict[str, Any]:
+        """Parse user input based on current state"""
+        try:
+            # For now, return a simple parsed structure
+            # In a real implementation, this would use more sophisticated NLP
+            return {
+                "raw_input": user_input,
+                "parsed_data": user_input.lower(),
+                "confidence": 0.8,
+                "state": state
+            }
+        except Exception as e:
+            logger.error(f"Error parsing user input: {e}")
+            return {
+                "raw_input": user_input,
+                "parsed_data": user_input,
+                "confidence": 0.5,
+                "state": state
+            }
+    
+    async def generate_response_for_state(
+        self, 
+        state: str, 
+        user_input: str, 
+        context: Dict[str, Any] = None
+    ) -> str:
+        """Generate contextual response for specific state"""
+        try:
+            # Define state-specific prompts
+            state_prompts = {
+                "ask_profession": "You are a visa assistant. Ask the user about their profession in a friendly way.",
+                "ask_tax_info": "You are a visa assistant. Ask the user about their tax filing status and income.",
+                "ask_balance": "You are a visa assistant. Ask the user about their ability to maintain a closing balance.",
+                "ask_travel": "You are a visa assistant. Ask the user about their travel history.",
+                "evaluation": "You are a visa assistant. Provide a professional evaluation response.",
+                "complete": "You are a visa assistant. Thank the user and provide next steps."
+            }
+            
+            system_prompt = state_prompts.get(state, "You are a helpful visa assistant.")
+            
+            # Add context to the prompt
+            if context:
+                context_str = f"Context: {str(context)}"
+                system_prompt += f"\n\n{context_str}"
+            
+            response = await self.generate_response(
+                messages=[{"role": "user", "content": user_input}],
+                system_prompt=system_prompt
+            )
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generating response for state: {e}")
+            # Fallback responses
+            fallback_responses = {
+                "ask_profession": "Could you please tell me about your profession? Are you a business person or job holder?",
+                "ask_tax_info": "Are you a tax filer? If yes, what was your annual income in the last tax return?",
+                "ask_balance": "Can you manage a closing balance of 2 million PKR?",
+                "ask_travel": "What is your previous travel history in the last 5 years?",
+                "evaluation": "Thank you for providing your information. I'm processing your visa evaluation.",
+                "complete": "Thank you for using our visa evaluation service!"
+            }
+            
+            return fallback_responses.get(state, "Thank you for your response. Please continue with the visa evaluation process.")
+
+
+# Global OpenAI service instance
+openai_service = OpenAIService() 
