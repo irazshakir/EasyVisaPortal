@@ -121,24 +121,182 @@ class OpenAIService:
             }
     
     async def parse_user_input(self, state: str, user_input: str) -> Dict[str, Any]:
-        """Parse user input based on current state"""
+        """Enhanced parsing of user input to extract structured information"""
         try:
-            # For now, return a simple parsed structure
-            # In a real implementation, this would use more sophisticated NLP
-            return {
-                "raw_input": user_input,
-                "parsed_data": user_input.lower(),
-                "confidence": 0.8,
-                "state": state
+            # Create a comprehensive system prompt for information extraction
+            system_prompt = """
+            You are an AI assistant that extracts structured information from visa-related conversations.
+            
+            Extract ALL relevant information from the user's message and return it in JSON format.
+            Look for information about:
+            
+            1. **Country**: Any mention of countries (e.g., France, Germany, USA, Canada, etc.)
+            2. **Profession**: Employment status (business person, job holder, employed, unemployed, student, etc.)
+            3. **Business Type**: If business person, extract business type (sole proprietor, private limited company, etc.)
+            4. **Salary**: If job holder, extract salary amount
+            5. **Salary Mode**: If job holder, extract how salary is received (bank transfer, cash, etc.)
+            6. **Tax Information**: Tax filing status and income amounts
+            7. **Financial Capacity**: Bank balance, savings, financial ability (especially 2M PKR requirement)
+            8. **Travel History**: Previous travel experience, countries visited, etc.
+            
+            Return a JSON object with this structure:
+            {
+                "extracted_info": {
+                    "country": {"value": "country_name", "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "profession": {"value": "profession_type", "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "business_type": {"value": "business_type", "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "salary": {"value": "salary_amount", "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "salary_mode": {"value": "salary_mode", "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "tax_filer": {"value": true/false/null, "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "annual_income": {"value": number/null, "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "closing_balance": {"value": number/null, "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "travel_history": {"value": "description", "confidence": 0.0-1.0, "source": "explicit/implicit"}
+                },
+                "overall_confidence": 0.0-1.0,
+                "questions_answered": ["country", "profession", "business_type", "salary", "salary_mode", "tax_info", "balance", "travel"],
+                "raw_input": "original_user_input"
             }
+            
+            Rules:
+            - Set confidence to 0.0 if information is not mentioned
+            - Set confidence to 0.5-0.7 if information is implied
+            - Set confidence to 0.8-1.0 if information is explicitly stated
+            - For numbers, extract the actual value (e.g., "2 million" -> 2000000)
+            - For countries, use standard names (e.g., "USA" -> "United States")
+            - For business types, identify: "sole proprietor", "private limited company", etc.
+            - For salary modes, identify: "bank transfer", "cash", etc.
+            - Only include questions_answered for information that is clearly provided
+            """
+            
+            # Get structured response from OpenAI
+            response = await self.generate_response(
+                messages=[{"role": "user", "content": user_input}],
+                system_prompt=system_prompt
+            )
+            
+            # Parse the JSON response
+            import json
+            try:
+                parsed_data = json.loads(response)
+                logger.info(f"Parsed user input: {parsed_data}")
+                return parsed_data
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse JSON response: {response}")
+                # Fallback to basic parsing
+                return self._fallback_parse(user_input, state)
+                
         except Exception as e:
-            logger.error(f"Error parsing user input: {e}")
-            return {
-                "raw_input": user_input,
-                "parsed_data": user_input,
-                "confidence": 0.5,
-                "state": state
+            logger.error(f"Error in enhanced parsing: {e}")
+            return self._fallback_parse(user_input, state)
+
+    def _fallback_parse(self, user_input: str, state: str) -> Dict[str, Any]:
+        """Fallback parsing when OpenAI parsing fails"""
+        input_lower = user_input.lower()
+        
+        # Basic keyword-based extraction
+        extracted_info = {
+            "country": {"value": None, "confidence": 0.0, "source": "none"},
+            "profession": {"value": None, "confidence": 0.0, "source": "none"},
+            "business_type": {"value": None, "confidence": 0.0, "source": "none"},
+            "salary": {"value": None, "confidence": 0.0, "source": "none"},
+            "salary_mode": {"value": None, "confidence": 0.0, "source": "none"},
+            "tax_filer": {"value": None, "confidence": 0.0, "source": "none"},
+            "annual_income": {"value": None, "confidence": 0.0, "source": "none"},
+            "closing_balance": {"value": None, "confidence": 0.0, "source": "none"},
+            "travel_history": {"value": None, "confidence": 0.0, "source": "none"}
+        }
+        
+        questions_answered = []
+        
+        # Basic country detection
+        countries = {
+            "france", "germany", "italy", "spain", "netherlands", "belgium", "austria", 
+            "switzerland", "denmark", "norway", "sweden", "finland", "poland", "czech", 
+            "hungary", "slovakia", "slovenia", "croatia", "greece", "portugal", "ireland",
+            "usa", "united states", "america", "canada", "uk", "united kingdom", 
+            "australia", "new zealand"
+        }
+        
+        for country in countries:
+            if country in input_lower:
+                extracted_info["country"] = {
+                    "value": country.title(),
+                    "confidence": 0.8,
+                    "source": "explicit"
+                }
+                questions_answered.append("country")
+                break
+        
+        # Basic profession detection
+        if any(word in input_lower for word in ["business", "owner", "entrepreneur"]):
+            extracted_info["profession"] = {
+                "value": "business person",
+                "confidence": 0.8,
+                "source": "explicit"
             }
+            questions_answered.append("profession")
+        elif any(word in input_lower for word in ["job", "employed", "employee", "worker"]):
+            extracted_info["profession"] = {
+                "value": "job holder",
+                "confidence": 0.8,
+                "source": "explicit"
+            }
+            questions_answered.append("profession")
+        
+        # Basic business type detection
+        if any(word in input_lower for word in ["sole", "proprietor", "individual"]):
+            extracted_info["business_type"] = {
+                "value": "sole proprietor",
+                "confidence": 0.8,
+                "source": "explicit"
+            }
+            questions_answered.append("business_type")
+        elif any(word in input_lower for word in ["private", "limited", "pvt", "company"]):
+            extracted_info["business_type"] = {
+                "value": "private limited company",
+                "confidence": 0.8,
+                "source": "explicit"
+            }
+            questions_answered.append("business_type")
+        
+        # Basic salary mode detection
+        if any(word in input_lower for word in ["bank", "account", "transfer", "deposit"]):
+            extracted_info["salary_mode"] = {
+                "value": "bank transfer",
+                "confidence": 0.8,
+                "source": "explicit"
+            }
+            questions_answered.append("salary_mode")
+        elif any(word in input_lower for word in ["cash", "hand"]):
+            extracted_info["salary_mode"] = {
+                "value": "cash",
+                "confidence": 0.8,
+                "source": "explicit"
+            }
+            questions_answered.append("salary_mode")
+        
+        # Basic financial detection
+        if "2 million" in input_lower or "2m" in input_lower or "2000000" in input_lower:
+            extracted_info["closing_balance"] = {
+                "value": 2000000,
+                "confidence": 0.8,
+                "source": "explicit"
+            }
+            questions_answered.append("balance")
+        
+        return {
+            "extracted_info": extracted_info,
+            "overall_confidence": 0.6,
+            "questions_answered": questions_answered,
+            "raw_input": user_input
+        }
+
+    async def extract_visa_information(self, user_input: str) -> Dict[str, Any]:
+        """
+        Extract all relevant visa information from user input
+        This is a wrapper around parse_user_input for easier integration
+        """
+        return await self.parse_user_input("any", user_input)
     
     async def generate_response_for_state(
         self, 

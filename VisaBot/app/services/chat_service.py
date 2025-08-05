@@ -1,7 +1,7 @@
 """
 Chat service for visa evaluation bot - integrates FSM, OpenAI, and session services
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 from loguru import logger
 
 from app.services.fsm_service import fsm_service, FSMStates
@@ -68,12 +68,16 @@ class ChatService:
                     metadata={"is_complete": True}
                 )
             
-            # Parse user input using OpenAI
-            parsed_input = await self.openai_service.parse_user_input(current_state, chat_request.message)
+            # Parse user input using OpenAI for enhanced information extraction
+            parsed_input = await self.openai_service.parse_user_input(current_state.value, chat_request.message)
+            logger.info(f"Enhanced parsing result: {parsed_input}")
             
-            # Process with FSM
+            # Extract the structured information for smart processing
+            extracted_info = parsed_input.get("extracted_info", {})
+            
+            # Process with FSM using smart processing
             logger.info(f"Processing user input for session {session_id} in state {current_state.value}")
-            fsm_result = await fsm_service.process_user_input(session_id, chat_request.message)
+            fsm_result = await fsm_service.process_user_input(session_id, chat_request.message, extracted_info)
             logger.info(f"FSM result: {fsm_result}")
             
             # Update session with new state and parsed data
