@@ -165,6 +165,9 @@ class OpenAIService:
             - For countries, use standard names (e.g., "USA" -> "United States")
             - For business types, identify: "sole proprietor", "private limited company", etc.
             - For salary modes, identify: "bank transfer", "cash", etc.
+            - For travel history, handle both positive and negative responses:
+              * Positive: "Dubai, Sri Lanka, Saudi Arabia" -> ["Dubai", "Sri Lanka", "Saudi Arabia"]
+              * Negative: "no travel", "none", "never traveled" -> []
             - Only include questions_answered for information that is clearly provided
             """
             
@@ -283,6 +286,42 @@ class OpenAIService:
                 "source": "explicit"
             }
             questions_answered.append("balance")
+        
+        # Basic travel history detection
+        if any(phrase in input_lower for phrase in ["no", "none", "never", "no history", "no travel", "no travel history", "never traveled", "no international travel"]):
+            extracted_info["travel_history"] = {
+                "value": [],
+                "confidence": 0.8,
+                "source": "explicit"
+            }
+            questions_answered.append("travel")
+        else:
+            # Try to extract countries from travel history
+            travel_countries = []
+            country_keywords = [
+                "dubai", "uae", "saudi arabia", "saudia", "sri lanka", "srilanka", 
+                "thailand", "malaysia", "singapore", "turkey", "qatar", "kuwait", 
+                "oman", "bahrain", "jordan", "lebanon", "egypt", "morocco", "tunisia",
+                "china", "japan", "south korea", "india", "pakistan", "bangladesh",
+                "nepal", "bhutan", "maldives", "afghanistan", "iran", "iraq", "syria",
+                "usa", "united states", "america", "canada", "uk", "united kingdom",
+                "australia", "new zealand", "france", "germany", "italy", "spain",
+                "netherlands", "belgium", "austria", "switzerland", "denmark", "norway",
+                "sweden", "finland", "poland", "czech", "hungary", "slovakia", "slovenia",
+                "croatia", "greece", "portugal", "ireland"
+            ]
+            
+            for country in country_keywords:
+                if country in input_lower:
+                    travel_countries.append(country.title())
+            
+            if travel_countries:
+                extracted_info["travel_history"] = {
+                    "value": travel_countries,
+                    "confidence": 0.8,
+                    "source": "explicit"
+                }
+                questions_answered.append("travel")
         
         return {
             "extracted_info": extracted_info,

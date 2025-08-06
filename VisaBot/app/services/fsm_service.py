@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, Tuple, List
 from loguru import logger
 
 from app.services.redis_service import redis_client
+from app.services.rag_service import rag_service
 
 
 class FSMStates(Enum):
@@ -412,12 +413,36 @@ class VisaEvaluationFSM:
             return FSMStates.ASK_TAX_INFO, self.questions[FSMStates.ASK_TAX_INFO]
         
         elif current_state == FSMStates.ASK_TAX_INFO:
+            # Store tax information and move to balance
+            input_lower = user_input.lower().strip()
+            if "yes" in input_lower:
+                self.answers["is_tax_filer"] = True
+                # Try to extract annual income if provided
+                import re
+                numbers = re.findall(r'\d+', user_input)
+                if numbers:
+                    self.answers["annual_income"] = int(numbers[0])
+                else:
+                    self.answers["annual_income"] = 0
+            else:
+                self.answers["is_tax_filer"] = False
+                self.answers["annual_income"] = 0
+    
             return FSMStates.ASK_BALANCE, self.questions[FSMStates.ASK_BALANCE]
         
         elif current_state == FSMStates.ASK_BALANCE:
+            # Store balance information and move to travel
+            input_lower = user_input.lower().strip()
+            if "yes" in input_lower:
+                self.answers["closing_balance"] = True
+            else:
+                self.answers["closing_balance"] = False
+            
             return FSMStates.ASK_TRAVEL, self.questions[FSMStates.ASK_TRAVEL]
         
         elif current_state == FSMStates.ASK_TRAVEL:
+            # Store travel history and move to evaluation
+            self.answers["travel_history"] = user_input
             return FSMStates.EVALUATION, "Evaluating your profile..."
         
         elif current_state == FSMStates.EVALUATION:
@@ -464,8 +489,8 @@ class VisaEvaluationFSM:
         else:
             evaluation["risk_factors"].append("⚠️ Business type unclear")
         
-        # Check salary (15 points)
-        salary = answers.get("salary", 0)
+        # Check salary (15 points) - use safe extraction
+        salary = self._safe_get_numeric_value(answers.get("salary", 0))
         salary_mode = answers.get("salary_mode", "").lower()
         
         if salary > 100000 and salary_mode == "bank transfer": # Example threshold
@@ -477,9 +502,9 @@ class VisaEvaluationFSM:
         else:
             evaluation["risk_factors"].append("⚠️ Income level may be insufficient or irregular")
         
-        # Check tax filing and income (30 points)
+        # Check tax filing and income (30 points) - use safe extraction
         is_tax_filer = answers.get("is_tax_filer", False)
-        annual_income = answers.get("annual_income", 0)
+        annual_income = self._safe_get_numeric_value(answers.get("annual_income", 0))
         
         if is_tax_filer and annual_income > 1200000:  # 1.2M PKR
             score += 30
@@ -490,8 +515,8 @@ class VisaEvaluationFSM:
         else:
             evaluation["risk_factors"].append("⚠️ Income level may be insufficient or tax compliance unclear")
         
-        # Check closing balance (25 points)
-        closing_balance = answers.get("closing_balance", 0)
+        # Check closing balance (25 points) - use safe extraction
+        closing_balance = self._safe_get_numeric_value(answers.get("closing_balance", 0))
         if closing_balance >= 2000000:  # 2M PKR
             score += 25
             evaluation["recommendations"].append("✅ Sufficient financial reserves")
@@ -501,8 +526,8 @@ class VisaEvaluationFSM:
         else:
             evaluation["risk_factors"].append("⚠️ Insufficient financial reserves")
         
-        # Check travel history (25 points)
-        travel_history = answers.get("travel_history", [])
+        # Check travel history (25 points) - use safe extraction
+        travel_history = self._safe_get_travel_history(answers)
         if len(travel_history) >= 2:
             score += 25
             evaluation["recommendations"].append("✅ Strong travel history")
@@ -533,6 +558,124 @@ class VisaEvaluationFSM:
         evaluation["max_score"] = max_score
         
         return evaluation
+
+    def _safe_get_travel_history(self, answers: Dict[str, Any]) -> List[str]:
+        """Safely extract travel history as a list"""
+        travel_history = answers.get("travel_history", [])
+        
+        # Handle different data types
+        if isinstance(travel_history, str):
+            # Parse string responses
+            travel_lower = travel_history.lower().strip()
+            
+            # Handle negative responses
+            if any(phrase in travel_lower for phrase in ["no", "none", "never", "no history", "no travel", "no travel history", "never traveled", "no international travel"]):
+                return []
+            
+            # Try to extract countries from text
+            countries = []
+            # Common country keywords
+            country_keywords = [
+                "dubai", "uae", "saudi arabia", "saudia", "sri lanka", "srilanka", 
+                "thailand", "malaysia", "singapore", "turkey", "qatar", "kuwait", 
+                "oman", "bahrain", "jordan", "lebanon", "egypt", "morocco", "tunisia",
+                "china", "japan", "south korea", "india", "pakistan", "bangladesh",
+                "nepal", "bhutan", "maldives", "afghanistan", "iran", "iraq", "syria",
+                "usa", "united states", "america", "canada", "uk", "united kingdom",
+                "australia", "new zealand", "france", "germany", "italy", "spain",
+                "netherlands", "belgium", "austria", "switzerland", "denmark", "norway",
+                "sweden", "finland", "poland", "czech", "hungary", "slovakia", "slovenia",
+                "croatia", "greece", "portugal", "ireland"
+            ]
+            
+            for country in country_keywords:
+                if country in travel_lower:
+                    countries.append(country.title())
+            
+            return countries if countries else []
+        
+        elif isinstance(travel_history, list):
+            return travel_history
+        else:
+            return []
+    
+    def _safe_get_numeric_value(self, value: Any) -> int:
+        """Safely extract numeric value from various data types"""
+        if isinstance(value, (int, float)):
+            return int(value)
+        elif isinstance(value, str):
+            # Extract numbers from string
+            import re
+            numbers = re.findall(r'\d+', value)
+            if numbers:
+                return int(numbers[0])
+            return 0
+        else:
+            return 0
+    
+    def _handle_off_track_question(self, user_input: str, current_state: FSMStates) -> Tuple[str, bool]:
+        """
+        Handle off-track questions and provide appropriate responses
+        Returns: (response_message, should_continue_to_fsm)
+        """
+        input_lower = user_input.lower().strip()
+        
+        # Common off-track questions and their responses
+        off_track_patterns = {
+            # Visa approval questions
+            "higher chances": "I understand you want to know about visa approval chances. Let me complete the evaluation first by asking a few more questions, then I'll provide you with a detailed analysis.",
+            "approval rate": "I'll calculate your approval probability once I have all your information. Let's continue with the evaluation.",
+            "success rate": "Your success rate will be determined based on your complete profile. Let me gather all the necessary information first.",
+            "chances": "I'll assess your visa chances after completing the evaluation. Let's continue with the questions.",
+            
+            # Process questions
+            "how long": "The visa application process typically takes 2-4 weeks for Schengen visas. Let me complete your evaluation first.",
+            "processing time": "Processing times vary by country, usually 2-4 weeks. Let's finish your evaluation first.",
+            "documents needed": "I'll provide a complete document list after your evaluation. Let's continue with the assessment.",
+            "requirements": "I'll outline all requirements based on your profile. Let me complete the evaluation first.",
+            
+            # Cost questions
+            "cost": "Visa fees vary by country (€60-€80 for Schengen). Let me complete your evaluation first.",
+            "fee": "Visa fees are typically €60-€80 for Schengen visas. Let's finish your evaluation.",
+            "price": "Visa costs vary by country. I'll provide specific details after your evaluation.",
+            
+            # General questions
+            "what is": "I'm here to evaluate your visa application. Let me ask you a few questions to provide an accurate assessment.",
+            "can you": "I can help with visa evaluation. Let me complete your profile assessment first.",
+            "help me": "I'm here to help with your visa evaluation. Let's continue with the assessment.",
+            
+            # Interruption patterns
+            "wait": "I understand. Let me ask you one more question to complete your evaluation.",
+            "stop": "I'll be brief. Let me just ask one more question to finish your evaluation.",
+            "enough": "Just one more question to complete your evaluation, then I'll provide full details.",
+        }
+        
+        # Check for off-track patterns
+        for pattern, response in off_track_patterns.items():
+            if pattern in input_lower:
+                return response, False  # Don't continue to FSM, use this response
+        
+        # If no off-track pattern found, continue with normal FSM processing
+        return "", True
+    
+    def _get_current_question_with_context(self, current_state: FSMStates) -> str:
+        """Get current question with additional context to keep user on track"""
+        base_question = self.questions.get(current_state, "")
+        
+        # Add context based on state
+        context_additions = {
+            FSMStates.ASK_COUNTRY: " (Please specify a country like France, Germany, Italy, etc.)",
+            FSMStates.ASK_PROFESSION: " (Please answer: business person or job holder)",
+            FSMStates.ASK_BUSINESS_TYPE: " (Please specify: sole proprietor or private limited company)",
+            FSMStates.ASK_SALARY: " (Please provide your monthly salary amount)",
+            FSMStates.ASK_SALARY_MODE: " (Please specify: bank transfer or cash)",
+            FSMStates.ASK_TAX_INFO: " (Please answer: yes/no and provide annual income if yes)",
+            FSMStates.ASK_BALANCE: " (Please answer: yes/no for 2 million PKR balance)",
+            FSMStates.ASK_TRAVEL: " (Please list countries visited in last 5 years, or say 'none' if no travel)",
+        }
+        
+        context = context_additions.get(current_state, "")
+        return base_question + context
 
 
 class FSMService:
@@ -607,55 +750,73 @@ class FSMService:
         return state_info
     
     async def process_user_input(self, session_id: str, user_input: str, extracted_info: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Process user input and move to next state with smart processing"""
-        fsm = await self.get_fsm(session_id)
-        
-        logger.info(f"FSM processing input for session {session_id} in state {fsm.current_state.value}")
-        logger.info(f"User input: {user_input}")
-        logger.info(f"Current FSM answers before processing: {fsm.answers}")
-        logger.info(f"Extracted info: {extracted_info}")
-        
-        # Use smart processing if extracted_info is provided and not in special states
-        if extracted_info and fsm.current_state not in [FSMStates.COUNTRY_NOT_SUPPORTED, FSMStates.COMPLETE]:
-            logger.info("Using smart processing logic")
+        """
+        Process user input and return next state and response
+        Now integrates with RAG for off-track questions and complex evaluation
+        """
+        try:
+            # Get FSM instance
+            fsm = await self.get_fsm(session_id)
             
-            # Store any additional information from current state if not already extracted
-            if fsm.current_state == FSMStates.ASK_PROFESSION and not extracted_info.get("profession", {}).get("value"):
-                fsm.answers["profession"] = user_input
-                logger.info(f"Stored profession from current state: {user_input}")
-            elif fsm.current_state == FSMStates.ASK_BUSINESS_TYPE and not extracted_info.get("business_type", {}).get("value"):
-                fsm.answers["business_type"] = user_input
-                logger.info(f"Stored business type from current state: {user_input}")
-            elif fsm.current_state == FSMStates.ASK_SALARY and not extracted_info.get("salary", {}).get("value"):
-                fsm.answers["salary"] = user_input
-                logger.info(f"Stored salary from current state: {user_input}")
-            elif fsm.current_state == FSMStates.ASK_SALARY_MODE and not extracted_info.get("salary_mode", {}).get("value"):
-                fsm.answers["salary_mode"] = user_input
-                logger.info(f"Stored salary mode from current state: {user_input}")
-            elif fsm.current_state == FSMStates.ASK_TAX_INFO and not extracted_info.get("tax_filer", {}).get("value"):
-                fsm.answers["tax_response"] = user_input
-                logger.info(f"Stored tax response from current state: {user_input}")
-            elif fsm.current_state == FSMStates.ASK_BALANCE and not extracted_info.get("closing_balance", {}).get("value"):
-                fsm.answers["balance_response"] = user_input
-                logger.info(f"Stored balance response from current state: {user_input}")
-            elif fsm.current_state == FSMStates.ASK_TRAVEL and not extracted_info.get("travel_history", {}).get("value"):
-                fsm.answers["travel_response"] = user_input
-                logger.info(f"Stored travel response from current state: {user_input}")
+            # Check for off-track questions first using RAG
+            rag_response = await rag_service.handle_off_track_question(
+                user_input, 
+                fsm.current_state.value, 
+                {"answers": fsm.answers, "session_id": session_id}
+            )
             
-            # Use smart processing
-            old_state = fsm.current_state.value
-            next_state, next_question = fsm.smart_process_input(user_input, extracted_info)
-            logger.info(f"Smart processing: Moving from {old_state} to {next_state.value}")
-            logger.info(f"Smart processing response: {next_question}")
+            if rag_response.confidence > 0.6 and not rag_response.should_return_to_fsm:
+                # RAG handled the question completely
+                logger.info(f"RAG handled off-track question with confidence: {rag_response.confidence}")
+                return {
+                    "current_state": fsm.current_state.value,
+                    "question": rag_response.answer,
+                    "answers": fsm.answers,
+                    "is_complete": False,
+                    "is_off_track": True,
+                    "rag_handled": True
+                }
             
-            # Update the FSM state
-            fsm.current_state = next_state
+            # If RAG suggests returning to FSM, use its transition message
+            if rag_response.confidence > 0.6 and rag_response.should_return_to_fsm:
+                # Use RAG's contextual response that includes transition back to FSM
+                logger.info(f"RAG provided contextual response with transition to FSM")
+                return {
+                    "current_state": fsm.current_state.value,
+                    "question": rag_response.answer,
+                    "answers": fsm.answers,
+                    "is_complete": False,
+                    "is_off_track": True,
+                    "rag_handled": True,
+                    "rag_context": rag_response.context_for_fsm
+                }
             
-        else:
-            # Fallback to original logic for special states or when no extracted_info
-            logger.info("Using traditional FSM logic")
+            # Fallback to original FSM logic for on-track questions
+            # Check for off-track questions first (original logic)
+            off_track_response, should_continue = fsm._handle_off_track_question(user_input, fsm.current_state)
+            if not should_continue:
+                # User asked an off-track question, provide response and stay in current state
+                logger.info(f"Handling off-track question: {off_track_response}")
+                return {
+                    "current_state": fsm.current_state.value,
+                    "question": off_track_response + "\n\n" + fsm._get_current_question_with_context(fsm.current_state),
+                    "answers": fsm.answers,
+                    "is_complete": False,
+                    "is_off_track": True
+                }
             
-            # Store the answer using original logic
+            # Initialize answered_questions
+            answered_questions = []
+            
+            # Store extracted information if provided
+            if extracted_info:
+                answered_questions = fsm._store_extracted_info(extracted_info)
+                logger.info(f"Stored extracted info, answered questions: {answered_questions}")
+            
+            # Always use traditional FSM logic as fallback to ensure answers are stored
+            logger.info("Using traditional FSM logic to ensure answers are stored")
+            
+            # Store the answer using traditional logic
             if fsm.current_state == FSMStates.GREETING:
                 # No specific answer to store here, just move to next state
                 pass
@@ -666,94 +827,206 @@ class FSMService:
                 # No specific answer to store here, just move to next state
                 pass
             elif fsm.current_state == FSMStates.ASK_PROFESSION:
-                fsm.answers["profession"] = user_input
-                logger.info(f"Stored profession answer: {user_input}")
+                if "profession" not in answered_questions:  # Only store if not already stored by extracted_info
+                    fsm.answers["profession"] = user_input
+                    logger.info(f"Stored profession answer: {user_input}")
+                    answered_questions.append("profession")
             elif fsm.current_state == FSMStates.ASK_BUSINESS_TYPE:
-                fsm.answers["business_type"] = user_input
-                logger.info(f"Stored business type answer: {user_input}")
+                if "business_type" not in answered_questions:  # Only store if not already stored by extracted_info
+                    fsm.answers["business_type"] = user_input
+                    logger.info(f"Stored business type answer: {user_input}")
+                    answered_questions.append("business_type")
             elif fsm.current_state == FSMStates.ASK_SALARY:
-                fsm.answers["salary"] = user_input
-                logger.info(f"Stored salary answer: {user_input}")
+                if "salary" not in answered_questions:  # Only store if not already stored by extracted_info
+                    fsm.answers["salary"] = user_input
+                    logger.info(f"Stored salary answer: {user_input}")
+                    answered_questions.append("salary")
             elif fsm.current_state == FSMStates.ASK_SALARY_MODE:
-                fsm.answers["salary_mode"] = user_input
-                logger.info(f"Stored salary mode answer: {user_input}")
+                if "salary_mode" not in answered_questions:  # Only store if not already stored by extracted_info
+                    fsm.answers["salary_mode"] = user_input
+                    logger.info(f"Stored salary mode answer: {user_input}")
+                    answered_questions.append("salary_mode")
             elif fsm.current_state == FSMStates.ASK_TAX_INFO:
-                fsm.answers["tax_response"] = user_input
-                logger.info(f"Stored tax answer: {user_input}")
+                if "tax_info" not in answered_questions:  # Only store if not already stored by extracted_info
+                    # Handle tax information more robustly
+                    input_lower = user_input.lower().strip()
+                    if "yes" in input_lower:
+                        fsm.answers["is_tax_filer"] = True
+                        # Try to extract annual income if provided
+                        import re
+                        numbers = re.findall(r'\d+', user_input)
+                        if numbers:
+                            fsm.answers["annual_income"] = int(numbers[0])
+                        else:
+                            # If no income provided, store the response for later processing
+                            fsm.answers["tax_response"] = user_input
+                        logger.info(f"Stored tax answer: {user_input}")
+                        answered_questions.append("tax_info")
+                    elif "no" in input_lower:
+                        fsm.answers["is_tax_filer"] = False
+                        fsm.answers["annual_income"] = 0
+                        logger.info(f"Stored tax answer: {user_input}")
+                        answered_questions.append("tax_info")
+                    else:
+                        # Store the response as is for later processing
+                        fsm.answers["tax_response"] = user_input
+                        logger.info(f"Stored tax answer: {user_input}")
+                        answered_questions.append("tax_info")
             elif fsm.current_state == FSMStates.ASK_BALANCE:
-                fsm.answers["balance_response"] = user_input
-                logger.info(f"Stored balance answer: {user_input}")
+                if "balance" not in answered_questions:  # Only store if not already stored by extracted_info
+                    # Handle balance information more robustly
+                    input_lower = user_input.lower().strip()
+                    if "yes" in input_lower:
+                        fsm.answers["closing_balance"] = True
+                    elif "no" in input_lower:
+                        fsm.answers["closing_balance"] = False
+                    else:
+                        # Store the response as is for later processing
+                        fsm.answers["balance_response"] = user_input
+                    logger.info(f"Stored balance answer: {user_input}")
+                    answered_questions.append("balance")
             elif fsm.current_state == FSMStates.ASK_TRAVEL:
-                fsm.answers["travel_response"] = user_input
-                logger.info(f"Stored travel answer: {user_input}")
+                if "travel" not in answered_questions:  # Only store if not already stored by extracted_info
+                    # Handle travel history more robustly
+                    input_lower = user_input.lower().strip()
+                    if any(phrase in input_lower for phrase in ["no", "none", "never", "no history", "no travel", "no travel history", "never traveled", "no international travel"]):
+                        fsm.answers["travel_history"] = []
+                    else:
+                        # Store the response for later processing
+                        fsm.answers["travel_response"] = user_input
+                    logger.info(f"Stored travel answer: {user_input}")
+                    answered_questions.append("travel")
             
-            # Move to next state using original logic
-            old_state = fsm.current_state.value
-            next_state, next_question = fsm.get_next_state(fsm.current_state, user_input)
-            logger.info(f"Traditional logic: Moving from {old_state} to {next_state.value}")
-            logger.info(f"Traditional logic response: {next_question}")
+            # Find next unanswered question
+            next_state, next_question = fsm._find_next_unanswered_question(answered_questions)
             
-            # Update the FSM state
+            # Update FSM state
             fsm.current_state = next_state
+            
+            # Check if evaluation is complete
+            if next_state == FSMStates.EVALUATION:
+                # Perform both FSM and RAG evaluation
+                fsm_evaluation = fsm.evaluate_profile(fsm.answers)
+                rag_evaluation = await rag_service.perform_rag_evaluation(fsm.answers, fsm.answers.get("country"))
+                
+                # Combine evaluations
+                combined_evaluation = self._combine_evaluations(fsm_evaluation, rag_evaluation)
+                
+                # Format response
+                response_message = self._format_combined_evaluation_response(combined_evaluation)
+                
+                # Move to complete state
+                fsm.current_state = FSMStates.COMPLETE
+                
+                # Save FSM state
+                await self.save_fsm_state(session_id)
+                
+                return {
+                    "current_state": fsm.current_state.value,
+                    "question": response_message,
+                    "answers": fsm.answers,
+                    "is_complete": True,
+                    "evaluation": combined_evaluation
+                }
+            
+            # Generate contextual response for next question
+            response_message = fsm._generate_contextual_response(extracted_info, next_question)
+            
+            # Save FSM state
+            await self.save_fsm_state(session_id)
+            
+            return {
+                "current_state": fsm.current_state.value,
+                "question": response_message,
+                "answers": fsm.answers,
+                "is_complete": False
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing user input: {e}")
+            raise
+
+    def _combine_evaluations(self, fsm_evaluation: Dict[str, Any], rag_evaluation: Dict[str, Any]) -> Dict[str, Any]:
+        """Combine FSM and RAG evaluations for comprehensive assessment"""
         
-        logger.info(f"FSM state after update: {fsm.current_state.value}")
-        logger.info(f"FSM answers after update: {fsm.answers}")
+        # Calculate combined score
+        fsm_score = fsm_evaluation.get("score", 0)
+        rag_probability = rag_evaluation.get("parsed_evaluation", {}).get("approval_probability", 0)
         
-        # If we're at evaluation state, perform evaluation
-        if fsm.current_state == FSMStates.EVALUATION:
-            logger.info("Performing visa evaluation...")
-            evaluation = fsm.evaluate_profile(fsm.answers)
-            fsm.answers["evaluation"] = evaluation
-            next_question = self._format_evaluation_response(evaluation)
-            logger.info(f"Evaluation complete. Score: {evaluation.get('score', 0)}/{evaluation.get('max_score', 100)}")
+        # Weight the scores (FSM: 60%, RAG: 40%)
+        combined_score = (fsm_score * 0.6) + (rag_probability * 0.4)
         
-        # Save state
-        await self.save_fsm_state(session_id)
-        
-        result = {
-            "current_state": fsm.current_state.value,
-            "question": next_question,
-            "answers": fsm.answers,
-            "is_complete": fsm.current_state == FSMStates.COMPLETE
-        }
-        
-        logger.info(f"FSM process_user_input result: {result}")
-        return result
-    
-    def _format_evaluation_response(self, evaluation: Dict[str, Any]) -> str:
-        """Format evaluation results into a readable response"""
-        response = "📋 **VISA EVALUATION REPORT**\n\n"
-        
-        # Score
-        response += f"**Overall Score:** {evaluation['score']}/{evaluation['max_score']} ({evaluation['confidence']*100:.1f}%)\n\n"
-        
-        # Eligibility
-        if evaluation["eligible"]:
-            response += "✅ **RECOMMENDATION: ELIGIBLE**\n\n"
+        # Determine overall recommendation
+        if combined_score >= 80:
+            recommendation = "Strong approval likelihood"
+            confidence = "High"
+        elif combined_score >= 60:
+            recommendation = "Good approval likelihood"
+            confidence = "Medium"
+        elif combined_score >= 40:
+            recommendation = "Moderate approval likelihood"
+            confidence = "Medium"
         else:
-            response += "❌ **RECOMMENDATION: NOT ELIGIBLE**\n\n"
+            recommendation = "Low approval likelihood"
+            confidence = "Low"
+        
+        return {
+            "combined_score": round(combined_score, 1),
+            "fsm_score": fsm_score,
+            "rag_probability": rag_probability,
+            "recommendation": recommendation,
+            "confidence": confidence,
+            "fsm_evaluation": fsm_evaluation,
+            "rag_evaluation": rag_evaluation,
+            "strengths": rag_evaluation.get("positive_factors", []),
+            "concerns": rag_evaluation.get("risk_factors", []),
+            "detailed_recommendations": rag_evaluation.get("recommendations", [])
+        }
+
+    def _format_combined_evaluation_response(self, evaluation: Dict[str, Any]) -> str:
+        """Format the combined evaluation response"""
+        
+        response_parts = []
+        
+        # Main result
+        response_parts.append(f"🎯 **Visa Evaluation Result**")
+        response_parts.append(f"Overall Score: {evaluation['combined_score']}/100")
+        response_parts.append(f"Recommendation: {evaluation['recommendation']}")
+        response_parts.append(f"Confidence: {evaluation['confidence']}")
+        response_parts.append("")
+        
+        # Strengths
+        if evaluation.get("strengths"):
+            response_parts.append("✅ **Your Strengths:**")
+            for strength in evaluation["strengths"]:
+                response_parts.append(f"• {strength}")
+            response_parts.append("")
+        
+        # Concerns
+        if evaluation.get("concerns"):
+            response_parts.append("⚠️ **Areas to Address:**")
+            for concern in evaluation["concerns"]:
+                response_parts.append(f"• {concern}")
+            response_parts.append("")
         
         # Recommendations
-        if evaluation["recommendations"]:
-            response += "**Strengths:**\n"
-            for rec in evaluation["recommendations"]:
-                response += f"• {rec}\n"
-            response += "\n"
-        
-        # Risk factors
-        if evaluation["risk_factors"]:
-            response += "**Areas of Concern:**\n"
-            for risk in evaluation["risk_factors"]:
-                response += f"• {risk}\n"
-            response += "\n"
+        if evaluation.get("detailed_recommendations"):
+            response_parts.append("📋 **Recommendations:**")
+            for rec in evaluation["detailed_recommendations"][:5]:  # Limit to top 5
+                response_parts.append(f"• {rec}")
+            response_parts.append("")
         
         # Next steps
-        if evaluation["next_steps"]:
-            response += "**Next Steps:**\n"
-            for step in evaluation["next_steps"]:
-                response += f"• {step}\n"
+        response_parts.append("👉 **Next Steps:**")
+        response_parts.append("1. Prepare all required documents")
+        response_parts.append("2. Book your visa appointment")
+        response_parts.append("3. Ensure all financial documents are up to date")
+        response_parts.append("4. Consider travel insurance")
+        response_parts.append("")
         
-        return response
+        response_parts.append("Thank you for using Easy Visa PK! For detailed assistance, contact our visa experts.")
+        
+        return "\n".join(response_parts)
     
     async def reset_session(self, session_id: str):
         """Reset session to initial state"""

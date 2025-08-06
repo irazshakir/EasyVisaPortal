@@ -8,6 +8,7 @@ from app.services.fsm_service import fsm_service, FSMStates
 from app.services.openai_service import openai_service
 from app.services.session_service import session_service
 from app.models.chat import ChatRequest, ChatResponse
+from app.services.rag_service import rag_service
 
 
 class ChatService:
@@ -19,7 +20,7 @@ class ChatService:
     async def process_chat_message(self, chat_request: ChatRequest) -> ChatResponse:
         """
         Process a chat message and return appropriate response
-        This is the main entry point for the visa evaluation bot
+        Now integrates with RAG for enhanced handling
         """
         try:
             # Get or create session
@@ -75,7 +76,7 @@ class ChatService:
             # Extract the structured information for smart processing
             extracted_info = parsed_input.get("extracted_info", {})
             
-            # Process with FSM using smart processing
+            # Process with FSM using smart processing (now includes RAG integration)
             logger.info(f"Processing user input for session {session_id} in state {current_state.value}")
             fsm_result = await fsm_service.process_user_input(session_id, chat_request.message, extracted_info)
             logger.info(f"FSM result: {fsm_result}")
@@ -94,15 +95,30 @@ class ChatService:
             # Add assistant message to history
             await session_service.add_message(session_id, "assistant", response_message)
             
+            # Prepare metadata with RAG information
+            metadata = {
+                "parsed_input": parsed_input,
+                "is_complete": fsm_result["is_complete"],
+                "answers": fsm_result["answers"],
+                "is_off_track": fsm_result.get("is_off_track", False)
+            }
+            
+            # Add RAG-specific metadata
+            if fsm_result.get("rag_handled"):
+                metadata["rag_handled"] = True
+                metadata["rag_confidence"] = fsm_result.get("rag_confidence", 0.0)
+                if fsm_result.get("rag_context"):
+                    metadata["rag_context"] = fsm_result["rag_context"]
+            
+            # Add evaluation metadata if complete
+            if fsm_result.get("evaluation"):
+                metadata["evaluation"] = fsm_result["evaluation"]
+            
             return ChatResponse(
                 session_id=session_id,
                 message=response_message,
                 state=next_state.value,
-                metadata={
-                    "parsed_input": parsed_input,
-                    "is_complete": fsm_result["is_complete"],
-                    "answers": fsm_result["answers"]
-                }
+                metadata=metadata
             )
             
         except Exception as e:
