@@ -4,11 +4,12 @@ Handles off-track questions and complex evaluation scenarios
 """
 import json
 import asyncio
+import os
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 from loguru import logger
 
-from app.services.openai_service import openai_service
+from app.services.groq_service import groq_service
 from app.core.config import settings
 
 
@@ -33,14 +34,53 @@ class RAGResponse:
     context_for_fsm: Dict[str, Any] = None
 
 
+@dataclass
+class ScenarioEvaluation:
+    """Scenario-based evaluation result"""
+    success_ratio: int
+    matched_scenario: str
+    recommendations: List[str]
+    application_strategy: str
+    risk_factors: List[str]
+    strengths: List[str]
+    required_documents: List[str]
+    confidence: float
+
+
 class RAGService:
     """RAG service for handling off-track questions and complex evaluations"""
     
     def __init__(self):
-        self.openai_service = openai_service
+        self.groq_service = groq_service
         self.faq_database = self._initialize_faq_database()
         self.evaluation_rules = self._initialize_evaluation_rules()
+        self.scenarios = self._load_scenarios()
+        self.evaluation_rules_text = self._load_evaluation_rules()
         
+    def _load_scenarios(self) -> str:
+        """Load scenarios from scenarios.md file"""
+        try:
+            scenarios_path = os.path.join(os.path.dirname(__file__), '..', 'prompts', 'scenarios.md')
+            with open(scenarios_path, 'r', encoding='utf-8') as file:
+                scenarios = file.read()
+            logger.info("Successfully loaded scenarios from scenarios.md")
+            return scenarios
+        except Exception as e:
+            logger.error(f"Error loading scenarios: {e}")
+            return "# Visa Evaluation Scenarios\n\nNo scenarios available."
+    
+    def _load_evaluation_rules(self) -> str:
+        """Load evaluation rules from evaluation_rules.md file"""
+        try:
+            rules_path = os.path.join(os.path.dirname(__file__), '..', 'prompts', 'evaluation_rules.md')
+            with open(rules_path, 'r', encoding='utf-8') as file:
+                rules = file.read()
+            logger.info("Successfully loaded evaluation rules from evaluation_rules.md")
+            return rules
+        except Exception as e:
+            logger.error(f"Error loading evaluation rules: {e}")
+            return "# Evaluation Rules\n\nNo evaluation rules available."
+    
     def _initialize_faq_database(self) -> List[FAQEntry]:
         """Initialize FAQ database with visa-related information"""
         return [
@@ -105,6 +145,25 @@ class RAGService:
                 category="visa_types",
                 keywords=["work", "job", "employment", "business", "study", "student"]
             ),
+            # New FAQs added
+            FAQEntry(
+                question="Which country has good visa ratio, visa success rate?",
+                answer="No country has good or bad ratio, it's social media hyped by agents and visa consultants. Visa approval depends upon individual's profile, financial stability and ties to home country and how visa file is prepared and presented. Every country has good success ratio if file is prepared properly.",
+                category="country_selection",
+                keywords=["good ratio", "visa ratio", "visa success", "success rate", "which country", "best country", "approval rate"]
+            ),
+            FAQEntry(
+                question="What is the visa process, how to apply?",
+                answer="Most of the Schengen countries have same visa process. a) Book your appointment first from BLS, VFS or embassy whichever it's dealing with. b) Prepare your documents/file and on day of appointment submit the hard copy, Biometric and Picture. Kindly note that for Belgium and Netherlands you need to submit the form online first and then apply for appointments from VFS portal.",
+                category="application_process",
+                keywords=["visa process", "how to apply", "application process", "procedure", "steps", "how to get visa", "apply visa"]
+            ),
+            FAQEntry(
+                question="Should I apply Schengen visa with no travel history?",
+                answer="It's better to have a travel history before applying specially if you are applying for tourist visa. You need to have a regular travel history in last 5 years.",
+                category="travel_history",
+                keywords=["no travel history", "travel history", "first time", "no previous travel", "should apply", "apply without travel"]
+            ),
         ]
     
     def _initialize_evaluation_rules(self) -> Dict[str, Any]:
@@ -144,6 +203,216 @@ class RAGService:
                 }
             }
         }
+    
+    async def perform_scenario_based_evaluation(self, user_answers: Dict[str, Any], target_country: str = None) -> ScenarioEvaluation:
+        """
+        Perform scenario-based evaluation using LLM with scenarios from scenarios.md
+        """
+        try:
+            # Create detailed user profile
+            user_profile = self._create_detailed_profile(user_answers, target_country)
+            
+            # Prepare system prompt with scenarios and evaluation rules
+            system_prompt = f"""
+            You are an expert visa evaluation specialist. Analyze the user's profile against the provided scenarios and evaluation rules.
+            
+            EVALUATION RULES:
+            {self.evaluation_rules_text}
+            
+            AVAILABLE SCENARIOS:
+            {self.scenarios}
+            
+            USER PROFILE:
+            {user_profile}
+            
+            TASK: Analyze the user's profile and match it to the most appropriate scenario(s). Provide a comprehensive evaluation including:
+            
+            1. Success Ratio (0-100%)
+            2. Best matching scenario(s)
+            3. Specific recommendations
+            4. Application strategy
+            5. Risk factors
+            6. Strengths
+            7. Required documents priority
+            
+            Return your response in JSON format:
+            {{
+                "success_ratio": 85,
+                "matched_scenario": "High-Income Business Owner with Travel History",
+                "recommendations": ["list of specific recommendations"],
+                "application_strategy": "detailed strategy",
+                "risk_factors": ["list of risk factors"],
+                "strengths": ["list of strengths"],
+                "required_documents": ["priority list of documents"],
+                "confidence": 0.9,
+                "reasoning": "explanation of why this scenario matches"
+            }}
+            
+            Be realistic but encouraging. Focus on actionable advice and specific steps the user should take.
+            """
+            
+            messages = [
+                {"role": "user", "content": f"Please evaluate this visa application profile:\n\n{user_profile}"}
+            ]
+            
+            # Get LLM response
+            llm_response = await self.groq_service.generate_response(messages, system_prompt)
+            
+            # Parse the JSON response
+            evaluation_result = self._parse_scenario_evaluation_response(llm_response)
+            
+            return evaluation_result
+            
+        except Exception as e:
+            logger.error(f"Error in scenario-based evaluation: {e}")
+            # Return fallback evaluation
+            return ScenarioEvaluation(
+                success_ratio=50,
+                matched_scenario="General Profile",
+                recommendations=["Please ensure all required documents are properly prepared."],
+                application_strategy="Apply with complete documentation and professional assistance.",
+                risk_factors=["Unable to perform detailed analysis"],
+                strengths=["Basic eligibility"],
+                required_documents=["Passport", "CNIC", "Bank Statement", "Employment Letter"],
+                confidence=0.5
+            )
+    
+    def _create_detailed_profile(self, answers: Dict[str, Any], target_country: str = None) -> str:
+        """Create a detailed profile description for scenario matching"""
+        profile_parts = []
+        
+        # Basic info
+        if target_country:
+            profile_parts.append(f"Target Country: {target_country}")
+        
+        # Profession
+        profession = answers.get("profession", "")
+        if profession:
+            profile_parts.append(f"Profession: {profession}")
+        
+        # Business type
+        business_type = answers.get("business_type", "")
+        if business_type:
+            profile_parts.append(f"Business Type: {business_type}")
+        
+        # Salary
+        salary = answers.get("salary", "")
+        if salary:
+            profile_parts.append(f"Salary: {salary}")
+        
+        # Salary mode
+        salary_mode = answers.get("salary_mode", "")
+        if salary_mode:
+            profile_parts.append(f"Salary Mode: {salary_mode}")
+        
+        # Tax filing
+        is_tax_filer = answers.get("is_tax_filer")
+        if is_tax_filer is not None:
+            profile_parts.append(f"Tax Filer: {'Yes' if is_tax_filer else 'No'}")
+        
+        # Annual income
+        annual_income = answers.get("annual_income", "")
+        if annual_income:
+            profile_parts.append(f"Annual Income: {annual_income}")
+        
+        # Closing balance
+        closing_balance = answers.get("closing_balance")
+        if closing_balance is not None:
+            profile_parts.append(f"Can Manage 2M PKR Balance: {'Yes' if closing_balance else 'No'}")
+        
+        # Travel history
+        travel_history = answers.get("travel_history", [])
+        if travel_history:
+            if isinstance(travel_history, list):
+                profile_parts.append(f"Travel History: {', '.join(travel_history)}")
+            else:
+                profile_parts.append(f"Travel History: {travel_history}")
+        else:
+            profile_parts.append("Travel History: None")
+        
+        # Selected country
+        selected_country = answers.get("selected_country", "")
+        if selected_country:
+            profile_parts.append(f"Selected Country: {selected_country}")
+        
+        return "\n".join(profile_parts)
+    
+    def _parse_scenario_evaluation_response(self, response_text: str) -> ScenarioEvaluation:
+        """Parse the LLM scenario evaluation response into structured data"""
+        try:
+            # Try to extract JSON from the response
+            import re
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            
+            if json_match:
+                json_str = json_match.group()
+                parsed = json.loads(json_str)
+                
+                return ScenarioEvaluation(
+                    success_ratio=parsed.get("success_ratio", 50),
+                    matched_scenario=parsed.get("matched_scenario", "General Profile"),
+                    recommendations=parsed.get("recommendations", []),
+                    application_strategy=parsed.get("application_strategy", ""),
+                    risk_factors=parsed.get("risk_factors", []),
+                    strengths=parsed.get("strengths", []),
+                    required_documents=parsed.get("required_documents", []),
+                    confidence=parsed.get("confidence", 0.7)
+                )
+            else:
+                # Fallback parsing if JSON not found
+                return self._fallback_parse_evaluation(response_text)
+                
+        except Exception as e:
+            logger.error(f"Error parsing scenario evaluation response: {e}")
+            return self._fallback_parse_evaluation(response_text)
+    
+    def _fallback_parse_evaluation(self, response_text: str) -> ScenarioEvaluation:
+        """Fallback parsing when JSON parsing fails"""
+        lines = response_text.split('\n')
+        
+        success_ratio = 50
+        recommendations = []
+        risk_factors = []
+        strengths = []
+        
+        for line in lines:
+            line_lower = line.lower()
+            
+            # Extract success ratio
+            if "%" in line and any(word in line_lower for word in ["success", "ratio", "probability", "chance"]):
+                try:
+                    import re
+                    numbers = re.findall(r'\d+', line)
+                    if numbers:
+                        success_ratio = int(numbers[0])
+                except:
+                    pass
+            
+            # Extract recommendations
+            if any(word in line_lower for word in ["recommend", "suggest", "advise", "should"]):
+                if line.strip() and not line.strip().startswith('#'):
+                    recommendations.append(line.strip())
+            
+            # Extract risk factors
+            if any(word in line_lower for word in ["risk", "concern", "weakness", "issue", "problem"]):
+                if line.strip() and not line.strip().startswith('#'):
+                    risk_factors.append(line.strip())
+            
+            # Extract strengths
+            if any(word in line_lower for word in ["strength", "positive", "good", "strong", "advantage"]):
+                if line.strip() and not line.strip().startswith('#'):
+                    strengths.append(line.strip())
+        
+        return ScenarioEvaluation(
+            success_ratio=success_ratio,
+            matched_scenario="General Profile",
+            recommendations=recommendations[:5],  # Limit to 5 recommendations
+            application_strategy="Apply with complete documentation and professional assistance.",
+            risk_factors=risk_factors[:3],  # Limit to 3 risk factors
+            strengths=strengths[:3],  # Limit to 3 strengths
+            required_documents=["Passport", "CNIC", "Bank Statement", "Employment Letter"],
+            confidence=0.6
+        )
     
     async def handle_off_track_question(self, user_input: str, current_fsm_state: str, user_context: Dict[str, Any] = None) -> RAGResponse:
         """
@@ -226,11 +495,13 @@ class RAGService:
         # Off-track question patterns
         off_track_patterns = {
             "general_info": ["what is", "how does", "can you tell", "explain", "information"],
-            "country_selection": ["best country", "which country", "recommend", "suggest", "good country"],
+            "country_selection": ["best country", "which country", "recommend", "suggest", "good country", "good ratio", "visa ratio", "visa success", "success rate"],
             "fees": ["cost", "fee", "price", "how much", "charge"],
             "timing": ["how long", "when", "time", "duration", "processing"],
             "documents": ["documents", "papers", "requirements", "what needed"],
             "rejection": ["rejected", "denied", "refused", "appeal", "what if"],
+            "application_process": ["visa process", "how to apply", "application process", "procedure", "steps", "how to get visa", "apply visa"],
+            "travel_history": ["no travel history", "travel history", "first time", "no previous travel", "should apply", "apply without travel"],
             "general_help": ["help", "assist", "guide", "advice", "support"]
         }
         
@@ -345,7 +616,7 @@ class RAGService:
         ]
         
         try:
-            response = await self.openai_service.generate_response(messages, system_prompt)
+            response = await self.groq_service.generate_response(messages, system_prompt)
             
             # Extract transition message
             lines = response.split('\n')
@@ -375,55 +646,22 @@ class RAGService:
         This supplements the FSM evaluation with more nuanced analysis
         """
         try:
-            # Prepare context for LLM evaluation
-            evaluation_context = {
-                "user_answers": user_answers,
-                "target_country": target_country,
-                "evaluation_rules": self.evaluation_rules,
-                "risk_factors": self._identify_risk_factors(user_answers),
-                "positive_factors": self._identify_positive_factors(user_answers)
-            }
-            
-            system_prompt = """
-            You are an expert visa evaluation specialist. Analyze the user's profile and provide a comprehensive evaluation.
-            
-            Consider:
-            1. Financial stability (income, tax filing, bank balance)
-            2. Travel history and experience
-            3. Professional background
-            4. Country-specific requirements
-            5. Risk factors and positive indicators
-            
-            Provide:
-            1. Overall approval probability (0-100%)
-            2. Key strengths
-            3. Areas of concern
-            4. Specific recommendations
-            5. Required documents priority list
-            6. Timeline recommendations
-            
-            Be realistic but encouraging. Focus on actionable advice.
-            """
-            
-            # Create detailed profile description
-            profile_description = self._create_profile_description(user_answers, target_country)
-            
-            messages = [
-                {"role": "user", "content": f"Please evaluate this visa application profile:\n\n{profile_description}"}
-            ]
-            
-            rag_evaluation = await self.openai_service.generate_response(messages, system_prompt, evaluation_context)
-            
-            # Parse the evaluation response
-            parsed_evaluation = self._parse_evaluation_response(rag_evaluation)
+            # Use scenario-based evaluation as the primary method
+            scenario_evaluation = await self.perform_scenario_based_evaluation(user_answers, target_country)
             
             return {
-                "rag_evaluation": rag_evaluation,
-                "parsed_evaluation": parsed_evaluation,
-                "risk_factors": evaluation_context["risk_factors"],
-                "positive_factors": evaluation_context["positive_factors"],
-                "recommendations": parsed_evaluation.get("recommendations", []),
-                "confidence": parsed_evaluation.get("confidence", 0.7)
+                "rag_evaluation": "Scenario-based evaluation completed",
+                "parsed_evaluation": {
+                    "approval_probability": scenario_evaluation.success_ratio,
+                    "strengths": scenario_evaluation.strengths,
+                    "concerns": scenario_evaluation.risk_factors,
+                    "recommendations": scenario_evaluation.recommendations
+                },
+                "risk_factors": scenario_evaluation.risk_factors,
+                "positive_factors": scenario_evaluation.strengths,
+                "recommendations": scenario_evaluation.recommendations,
+                "confidence": scenario_evaluation.confidence,
+                "scenario_evaluation": scenario_evaluation
             }
             
         except Exception as e:

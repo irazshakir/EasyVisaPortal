@@ -11,7 +11,7 @@ from app.models.chat import ChatResponse
 async def test_process_message_success():
     """Test successful message processing"""
     with patch('app.services.chat_service.fsm_service') as mock_fsm, \
-         patch('app.services.chat_service.OpenAIService') as mock_openai, \
+         patch('app.services.chat_service.GroqService') as mock_groq, \
          patch('app.services.chat_service.SessionService') as mock_session:
         
         # Setup mocks
@@ -20,16 +20,16 @@ async def test_process_message_success():
             'context': {}
         }
         
-        mock_openai_instance = AsyncMock()
-        mock_openai_instance.analyze_intent.return_value = {
+        mock_groq_instance = AsyncMock()
+        mock_groq_instance.analyze_intent.return_value = {
             'intent': 'greeting',
             'confidence': 0.9,
             'entities': {},
             'requires_action': False,
             'next_state': 'greeting'
         }
-        mock_openai_instance.generate_response.return_value = "Hello! How can I help you with your visa application?"
-        mock_openai.return_value = mock_openai_instance
+        mock_groq_instance.generate_response.return_value = "Hello! How can I help you with your visa application?"
+        mock_groq.return_value = mock_groq_instance
         
         mock_session_instance = AsyncMock()
         mock_session.return_value = mock_session_instance

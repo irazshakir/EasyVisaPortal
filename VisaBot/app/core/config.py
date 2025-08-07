@@ -22,11 +22,18 @@ class Settings(BaseSettings):
     # CORS settings
     ALLOWED_HOSTS: List[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"]
     
-    # OpenAI settings
-    OPENAI_API_KEY: str
+    # OpenAI settings (deprecated - keeping for backward compatibility)
+    OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4"
     OPENAI_MAX_TOKENS: int = 2000
     OPENAI_TEMPERATURE: float = 0.7
+    
+    # Groq settings
+    GROQ_API_KEY: str
+    GROQ_DEFAULT_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_EVALUATION_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MAX_TOKENS: int = 2000
+    GROQ_TEMPERATURE: float = 0.7
     
     # Redis settings
     REDIS_URL: str = "redis://localhost:6379"
@@ -60,10 +67,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "your_secret_key_here"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    @validator("OPENAI_API_KEY")
-    def validate_openai_key(cls, v):
+    @validator("GROQ_API_KEY")
+    def validate_groq_key(cls, v):
         if not v:
-            raise ValueError("OPENAI_API_KEY is required")
+            raise ValueError("GROQ_API_KEY is required")
         return v
     
     class Config:

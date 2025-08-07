@@ -31,11 +31,11 @@ spec:
             memory: "1Gi"
             cpu: "500m"
         env:
-        - name: OPENAI_API_KEY
+        - name: GROQ_API_KEY
           valueFrom:
             secretKeyRef:
               name: ai-secrets
-              key: openai-api-key
+              key: groq-api-key
         - name: ANTHROPIC_API_KEY
           valueFrom:
             secretKeyRef:
@@ -104,11 +104,11 @@ spec:
             memory: "1Gi"
             cpu: "500m"
         env:
-        - name: OPENAI_API_KEY
+        - name: GROQ_API_KEY
           valueFrom:
             secretKeyRef:
               name: ai-secrets
-              key: openai-api-key
+              key: groq-api-key
         - name: ANTHROPIC_API_KEY
           valueFrom:
             secretKeyRef:

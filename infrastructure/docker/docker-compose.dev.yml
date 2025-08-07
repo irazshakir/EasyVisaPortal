@@ -45,7 +45,7 @@ services:
     volumes:
       - ../../bots/visa_evaluation_bot:/app
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - WHATSAPP_TOKEN=${WHATSAPP_TOKEN}
       - DATABASE_URL=postgresql://postgres:password@db:5432/visa_portal
@@ -64,7 +64,7 @@ services:
     volumes:
       - ../../bots/document_preparation_bot:/app
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - DATABASE_URL=postgresql://postgres:password@db:5432/visa_portal
       - REDIS_URL=redis://redis:6379/0

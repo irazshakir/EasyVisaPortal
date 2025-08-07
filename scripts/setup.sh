@@ -80,7 +80,7 @@ EOF
     # Bot environment files
     if [ ! -f "bots/visa_evaluation_bot/.env" ]; then
         cat > bots/visa_evaluation_bot/.env << EOF
-OPENAI_API_KEY=your-openai-api-key
+GROQ_API_KEY=your-groq-api-key
 ANTHROPIC_API_KEY=your-anthropic-api-key
 WHATSAPP_TOKEN=your-whatsapp-token
 DATABASE_URL=postgresql://postgres:password@db:5432/visa_portal
@@ -91,7 +91,7 @@ EOF
     
     if [ ! -f "bots/document_preparation_bot/.env" ]; then
         cat > bots/document_preparation_bot/.env << EOF
-OPENAI_API_KEY=your-openai-api-key
+GROQ_API_KEY=your-groq-api-key
 ANTHROPIC_API_KEY=your-anthropic-api-key
 DATABASE_URL=postgresql://postgres:password@db:5432/visa_portal
 REDIS_URL=redis://redis:6379/0

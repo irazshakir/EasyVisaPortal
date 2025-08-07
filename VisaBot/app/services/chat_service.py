@@ -5,17 +5,18 @@ from typing import Dict, Any, Optional, List, Tuple
 from loguru import logger
 
 from app.services.fsm_service import fsm_service, FSMStates
-from app.services.openai_service import openai_service
+from app.services.groq_service import groq_service
 from app.services.session_service import session_service
 from app.models.chat import ChatRequest, ChatResponse
 from app.services.rag_service import rag_service
+from app.services.evaluation_service import evaluation_service
 
 
 class ChatService:
     """Main chat service for visa evaluation bot"""
     
     def __init__(self):
-        self.openai_service = openai_service
+        self.groq_service = groq_service
     
     async def process_chat_message(self, chat_request: ChatRequest) -> ChatResponse:
         """
@@ -69,8 +70,8 @@ class ChatService:
                     metadata={"is_complete": True}
                 )
             
-            # Parse user input using OpenAI for enhanced information extraction
-            parsed_input = await self.openai_service.parse_user_input(current_state.value, chat_request.message)
+            # Parse user input using Groq for enhanced information extraction
+            parsed_input = await self.groq_service.parse_user_input(current_state.value, chat_request.message)
             logger.info(f"Enhanced parsing result: {parsed_input}")
             
             # Extract the structured information for smart processing
@@ -207,18 +208,26 @@ class ChatService:
             answers = session_service.get_session_answers(session_id)
             evaluation = answers.get("evaluation", {})
             
+            # Get target country from answers
+            target_country = answers.get("selected_country") or answers.get("country")
+            
+            # Generate fresh evaluation summary using the evaluation service
+            evaluation_summary = await evaluation_service.get_evaluation_summary(answers, target_country)
+            
             return {
                 "session_id": session_id,
                 "evaluation": evaluation,
                 "answers": answers,
                 "summary": {
-                    "eligible": evaluation.get("eligible", False),
-                    "score": evaluation.get("score", 0),
-                    "confidence": evaluation.get("confidence", 0),
+                    "success_ratio": evaluation.get("success_ratio", 0),
+                    "overall_recommendation": evaluation.get("overall_recommendation", ""),
+                    "confidence_level": evaluation.get("confidence_level", ""),
+                    "should_apply": evaluation.get("should_apply", False),
                     "recommendations": evaluation.get("recommendations", []),
                     "risk_factors": evaluation.get("risk_factors", []),
                     "next_steps": evaluation.get("next_steps", [])
-                }
+                },
+                "formatted_summary": evaluation_summary
             }
             
         except Exception as e:

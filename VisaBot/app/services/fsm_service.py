@@ -7,6 +7,7 @@ from loguru import logger
 
 from app.services.redis_service import redis_client
 from app.services.rag_service import rag_service
+from app.services.evaluation_service import evaluation_service
 
 
 class FSMStates(Enum):
@@ -30,13 +31,13 @@ class VisaEvaluationFSM:
     
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.current_state = FSMStates.GREETING
+        self.current_state = FSMStates.ASK_COUNTRY  # Start directly with country question
         self.answers: Dict[str, Any] = {}
         
         # Questions for each state
         self.questions = {
             FSMStates.GREETING: "Welcome to Easy Visa PK free visa success ratio evaluation. I am here to assist and answer your questions. Which Country visa are you interested to apply?",
-            FSMStates.ASK_COUNTRY: "Which Country visa are you interested to apply?",
+            FSMStates.ASK_COUNTRY: "Welcome to Easy Visa PK free visa success ratio evaluation. I am here to assist and answer your questions. Which Country visa are you interested to apply?",
             FSMStates.COUNTRY_NOT_SUPPORTED: "At the moment we are not providing Visa Success ratio evaluation for this country. We are only assisting in Schengen visas. Would you like to evaluate for a Schengen country instead?",
             FSMStates.ASK_PROFESSION: "Great! I'm going to ask you some questions to evaluate your success ratio. Are you a business person or job holder?",
             FSMStates.ASK_BUSINESS_TYPE: "Are you a sole proprietor or is it a Private Limited company?",
@@ -81,6 +82,12 @@ class VisaEvaluationFSM:
         """Get the current question for the user"""
         return self.questions.get(self.current_state, "")
     
+    def log_current_state(self):
+        """Log current state and answers for debugging"""
+        logger.info(f"Current FSM state: {self.current_state.value}")
+        logger.info(f"Current answers: {self.answers}")
+        logger.info(f"Current question: {self.get_current_question()}")
+    
     def _is_supported_country(self, user_input: str) -> bool:
         """Check if the user input indicates a supported country"""
         input_lower = user_input.lower().strip()
@@ -89,11 +96,15 @@ class VisaEvaluationFSM:
         if isinstance(input_lower, list):
             input_lower = input_lower[0].lower().strip() if input_lower else ""
         
+        logger.info(f"Checking if '{input_lower}' is a supported country")
+        
         # Check for supported countries
         for country in self.supported_countries:
             if country in input_lower:
+                logger.info(f"Found supported country: {country}")
                 return True
         
+        logger.info(f"'{input_lower}' is not a supported country")
         return False
     
     def _is_non_supported_country(self, user_input: str) -> bool:
@@ -127,7 +138,9 @@ class VisaEvaluationFSM:
                 if isinstance(country_value, list):
                     country_value = country_value[0] if country_value else None
                 
-                if country_value:
+                # Only store country if we're not in travel history state
+                # This prevents travel history countries from being stored as target country
+                if country_value and self.current_state != FSMStates.ASK_TRAVEL:
                     self.answers["selected_country"] = country_value
                     questions_answered.append("country")
                     logger.info(f"Stored country: {country_value}")
@@ -182,10 +195,13 @@ class VisaEvaluationFSM:
         
         # Store travel history
         travel_info = extracted_info.get("travel_history", {})
+        logger.info(f"Travel info from extraction: {travel_info}")
         if travel_info.get("value") and travel_info.get("confidence", 0) >= 0.7:
             self.answers["travel_history"] = travel_info["value"]
             questions_answered.append("travel")
             logger.info(f"Stored travel history: {travel_info['value']}")
+        else:
+            logger.info(f"Travel history not stored - value: {travel_info.get('value')}, confidence: {travel_info.get('confidence', 0)}")
         
         return questions_answered
     
@@ -193,7 +209,7 @@ class VisaEvaluationFSM:
         """
         Find the next unanswered question based on what information is already available
         """
-        # Define the question sequence with branching logic
+        # Define the question sequence with proper branching logic
         question_sequence = [
             ("country", FSMStates.ASK_COUNTRY),
             ("profession", FSMStates.ASK_PROFESSION),
@@ -224,7 +240,7 @@ class VisaEvaluationFSM:
             stored_answers.add("tax_info")
         if self.answers.get("closing_balance") or self.answers.get("balance_response"):
             stored_answers.add("balance")
-        if self.answers.get("travel_history") or self.answers.get("travel_response"):
+        if self.answers.get("travel_history"):
             stored_answers.add("travel")
         
         # Combine answered questions from current extraction and stored answers
@@ -238,24 +254,29 @@ class VisaEvaluationFSM:
         
         # Find the first unanswered question based on profession type
         for question, state in question_sequence:
+            logger.info(f"Checking question: {question}, state: {state.value}, answered: {question in all_answered}")
             if question not in all_answered:
                 # Handle branching logic
-                if question == "business_type" and not is_business:
-                    # Skip business_type if not a business person
-                    continue
-                elif question in ["salary", "salary_mode"] and not is_job_holder:
-                    # Skip salary questions if not a job holder
-                    continue
-                elif question == "business_type" and is_business:
-                    # If business person, ask business type
-                    logger.info(f"Next unanswered question: {question} -> {state.value}")
-                    return state, self.questions[state]
-                elif question == "salary" and is_job_holder:
-                    # If job holder, ask salary
-                    logger.info(f"Next unanswered question: {question} -> {state.value}")
-                    return state, self.questions[state]
-                elif question not in ["business_type", "salary", "salary_mode"]:
-                    # For common questions, proceed normally
+                if question == "business_type":
+                    if not is_business:
+                        # Skip business_type if not a business person
+                        logger.info(f"Skipping business_type - not a business person")
+                        continue
+                    else:
+                        # If business person, ask business type
+                        logger.info(f"Next unanswered question: {question} -> {state.value}")
+                        return state, self.questions[state]
+                elif question in ["salary", "salary_mode"]:
+                    if not is_job_holder:
+                        # Skip salary questions if not a job holder
+                        logger.info(f"Skipping {question} - not a job holder")
+                        continue
+                    else:
+                        # If job holder, ask salary
+                        logger.info(f"Next unanswered question: {question} -> {state.value}")
+                        return state, self.questions[state]
+                else:
+                    # For common questions (country, profession, tax_info, balance, travel), proceed normally
                     logger.info(f"Next unanswered question: {question} -> {state.value}")
                     return state, self.questions[state]
         
@@ -314,6 +335,9 @@ class VisaEvaluationFSM:
         logger.info(f"Extracted info: {extracted_info}")
         logger.info(f"Current answers before processing: {self.answers}")
         
+        # Log current state before processing
+        self.log_current_state()
+        
         # Store extracted information
         answered_questions = self._store_extracted_info(extracted_info)
         logger.info(f"Questions answered from extraction: {answered_questions}")
@@ -344,22 +368,22 @@ class VisaEvaluationFSM:
     
     def get_next_state(self, current_state: FSMStates, user_input: str) -> Tuple[FSMStates, str]:
         """Determine next state based on current state and user input"""
-        if current_state == FSMStates.GREETING:
-            # After greeting, always ask for country
-            return FSMStates.ASK_COUNTRY, self.questions[FSMStates.ASK_COUNTRY]
-        
-        elif current_state == FSMStates.ASK_COUNTRY:
+        if current_state == FSMStates.ASK_COUNTRY:
             # Check if user mentioned a supported country
+            logger.info(f"Processing country selection: '{user_input}'")
             if self._is_supported_country(user_input):
                 # Store the selected country
                 self.answers["selected_country"] = user_input
+                logger.info(f"Stored supported country: {user_input}")
                 return FSMStates.ASK_PROFESSION, self.questions[FSMStates.ASK_PROFESSION]
             elif self._is_non_supported_country(user_input):
                 # Store the unsupported country and inform user
                 self.answers["unsupported_country"] = user_input
+                logger.info(f"Stored unsupported country: {user_input}")
                 return FSMStates.COUNTRY_NOT_SUPPORTED, self.questions[FSMStates.COUNTRY_NOT_SUPPORTED]
             else:
                 # Unclear response, ask again
+                logger.info(f"Unclear country response: {user_input}")
                 return FSMStates.ASK_COUNTRY, "I didn't understand. Please specify which country visa you're interested in (e.g., France, Germany, USA, Canada, etc.)."
         
         elif current_state == FSMStates.COUNTRY_NOT_SUPPORTED:
@@ -635,8 +659,8 @@ class VisaEvaluationFSM:
             "requirements": "I'll outline all requirements based on your profile. Let me complete the evaluation first.",
             
             # Cost questions
-            "cost": "Visa fees vary by country (€60-€80 for Schengen). Let me complete your evaluation first.",
-            "fee": "Visa fees are typically €60-€80 for Schengen visas. Let's finish your evaluation.",
+            "cost": "Visa fees vary by country (€90 for Schengen). Let me complete your evaluation first.",
+            "fee": "Visa fees are typically €90 for Schengen visas. Let's finish your evaluation.",
             "price": "Visa costs vary by country. I'll provide specific details after your evaluation.",
             
             # General questions
@@ -701,7 +725,7 @@ class FSMService:
             
             if state_data:
                 # Restore state and answers
-                state_name = state_data.get('state', 'greeting')
+                state_name = state_data.get('state', 'ask_country')  # Default to ask_country
                 fsm.current_state = FSMStates(state_name)
                 fsm.answers = state_data.get('answers', {})
                 logger.info(f"Restored FSM state for session {session_id}: {fsm.current_state.value}")
@@ -817,12 +841,20 @@ class FSMService:
             logger.info("Using traditional FSM logic to ensure answers are stored")
             
             # Store the answer using traditional logic
-            if fsm.current_state == FSMStates.GREETING:
-                # No specific answer to store here, just move to next state
-                pass
-            elif fsm.current_state == FSMStates.ASK_COUNTRY:
-                # No specific answer to store here, just move to next state
-                pass
+            if fsm.current_state == FSMStates.ASK_COUNTRY:
+                # Handle country selection using traditional logic
+                if "country" not in answered_questions:  # Only store if not already stored by extracted_info
+                    if fsm._is_supported_country(user_input):
+                        fsm.answers["selected_country"] = user_input
+                        logger.info(f"Stored country answer: {user_input}")
+                        answered_questions.append("country")
+                    elif fsm._is_non_supported_country(user_input):
+                        fsm.answers["unsupported_country"] = user_input
+                        logger.info(f"Stored unsupported country: {user_input}")
+                        # Don't add to answered_questions as this will be handled by get_next_state
+                    else:
+                        # Unclear response, don't store anything
+                        logger.info(f"Unclear country response: {user_input}")
             elif fsm.current_state == FSMStates.COUNTRY_NOT_SUPPORTED:
                 # No specific answer to store here, just move to next state
                 pass
@@ -892,28 +924,33 @@ class FSMService:
                     if any(phrase in input_lower for phrase in ["no", "none", "never", "no history", "no travel", "no travel history", "never traveled", "no international travel"]):
                         fsm.answers["travel_history"] = []
                     else:
-                        # Store the response for later processing
-                        fsm.answers["travel_response"] = user_input
+                        # Store the response as travel_history for consistency
+                        fsm.answers["travel_history"] = user_input
                     logger.info(f"Stored travel answer: {user_input}")
                     answered_questions.append("travel")
             
-            # Find next unanswered question
-            next_state, next_question = fsm._find_next_unanswered_question(answered_questions)
-            
-            # Update FSM state
-            fsm.current_state = next_state
+            # For country selection, use traditional logic
+            if fsm.current_state == FSMStates.ASK_COUNTRY:
+                next_state, next_question = fsm.get_next_state(fsm.current_state, user_input)
+                fsm.current_state = next_state
+                logger.info(f"Country selection - Next state: {next_state.value}")
+            else:
+                # Find next unanswered question for other states
+                next_state, next_question = fsm._find_next_unanswered_question(answered_questions)
+                # Update FSM state
+                fsm.current_state = next_state
             
             # Check if evaluation is complete
             if next_state == FSMStates.EVALUATION:
-                # Perform both FSM and RAG evaluation
-                fsm_evaluation = fsm.evaluate_profile(fsm.answers)
-                rag_evaluation = await rag_service.perform_rag_evaluation(fsm.answers, fsm.answers.get("country"))
+                # Perform scenario-based evaluation using the new evaluation service
+                target_country = fsm.answers.get("selected_country") or fsm.answers.get("country")
+                scenario_evaluation = await evaluation_service.evaluate_visa_application(fsm.answers, target_country)
                 
-                # Combine evaluations
-                combined_evaluation = self._combine_evaluations(fsm_evaluation, rag_evaluation)
+                # Format response using the evaluation service
+                response_message = await evaluation_service.get_evaluation_summary(fsm.answers, target_country)
                 
-                # Format response
-                response_message = self._format_combined_evaluation_response(combined_evaluation)
+                # Store evaluation results
+                fsm.answers["evaluation"] = scenario_evaluation
                 
                 # Move to complete state
                 fsm.current_state = FSMStates.COMPLETE
@@ -926,7 +963,7 @@ class FSMService:
                     "question": response_message,
                     "answers": fsm.answers,
                     "is_complete": True,
-                    "evaluation": combined_evaluation
+                    "evaluation": scenario_evaluation
                 }
             
             # Generate contextual response for next question
@@ -946,87 +983,7 @@ class FSMService:
             logger.error(f"Error processing user input: {e}")
             raise
 
-    def _combine_evaluations(self, fsm_evaluation: Dict[str, Any], rag_evaluation: Dict[str, Any]) -> Dict[str, Any]:
-        """Combine FSM and RAG evaluations for comprehensive assessment"""
-        
-        # Calculate combined score
-        fsm_score = fsm_evaluation.get("score", 0)
-        rag_probability = rag_evaluation.get("parsed_evaluation", {}).get("approval_probability", 0)
-        
-        # Weight the scores (FSM: 60%, RAG: 40%)
-        combined_score = (fsm_score * 0.6) + (rag_probability * 0.4)
-        
-        # Determine overall recommendation
-        if combined_score >= 80:
-            recommendation = "Strong approval likelihood"
-            confidence = "High"
-        elif combined_score >= 60:
-            recommendation = "Good approval likelihood"
-            confidence = "Medium"
-        elif combined_score >= 40:
-            recommendation = "Moderate approval likelihood"
-            confidence = "Medium"
-        else:
-            recommendation = "Low approval likelihood"
-            confidence = "Low"
-        
-        return {
-            "combined_score": round(combined_score, 1),
-            "fsm_score": fsm_score,
-            "rag_probability": rag_probability,
-            "recommendation": recommendation,
-            "confidence": confidence,
-            "fsm_evaluation": fsm_evaluation,
-            "rag_evaluation": rag_evaluation,
-            "strengths": rag_evaluation.get("positive_factors", []),
-            "concerns": rag_evaluation.get("risk_factors", []),
-            "detailed_recommendations": rag_evaluation.get("recommendations", [])
-        }
 
-    def _format_combined_evaluation_response(self, evaluation: Dict[str, Any]) -> str:
-        """Format the combined evaluation response"""
-        
-        response_parts = []
-        
-        # Main result
-        response_parts.append(f"🎯 **Visa Evaluation Result**")
-        response_parts.append(f"Overall Score: {evaluation['combined_score']}/100")
-        response_parts.append(f"Recommendation: {evaluation['recommendation']}")
-        response_parts.append(f"Confidence: {evaluation['confidence']}")
-        response_parts.append("")
-        
-        # Strengths
-        if evaluation.get("strengths"):
-            response_parts.append("✅ **Your Strengths:**")
-            for strength in evaluation["strengths"]:
-                response_parts.append(f"• {strength}")
-            response_parts.append("")
-        
-        # Concerns
-        if evaluation.get("concerns"):
-            response_parts.append("⚠️ **Areas to Address:**")
-            for concern in evaluation["concerns"]:
-                response_parts.append(f"• {concern}")
-            response_parts.append("")
-        
-        # Recommendations
-        if evaluation.get("detailed_recommendations"):
-            response_parts.append("📋 **Recommendations:**")
-            for rec in evaluation["detailed_recommendations"][:5]:  # Limit to top 5
-                response_parts.append(f"• {rec}")
-            response_parts.append("")
-        
-        # Next steps
-        response_parts.append("👉 **Next Steps:**")
-        response_parts.append("1. Prepare all required documents")
-        response_parts.append("2. Book your visa appointment")
-        response_parts.append("3. Ensure all financial documents are up to date")
-        response_parts.append("4. Consider travel insurance")
-        response_parts.append("")
-        
-        response_parts.append("Thank you for using Easy Visa PK! For detailed assistance, contact our visa experts.")
-        
-        return "\n".join(response_parts)
     
     async def reset_session(self, session_id: str):
         """Reset session to initial state"""
