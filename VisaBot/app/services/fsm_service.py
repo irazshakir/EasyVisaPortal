@@ -22,6 +22,12 @@ class FSMStates(Enum):
     ASK_TAX_INFO = "ask_tax_info"
     ASK_BALANCE = "ask_balance"
     ASK_TRAVEL = "ask_travel"
+    ASK_LAST_TRAVEL_YEAR = "ask_last_travel_year"  # New state for last travel year
+    ASK_VALID_VISA = "ask_valid_visa"  # New state for valid visa question
+    ASK_SCHENGEN_REJECTION = "ask_schengen_rejection"  # New state for Schengen visa rejection
+    ASK_AGE = "ask_age"  # New state for age
+    ASK_BUSINESS_PREMISES = "ask_business_premises"  # New state for business premises
+    ASK_BUSINESS_ONLINE_PRESENCE = "ask_business_online_presence"  # New state for business online presence
     EVALUATION = "evaluation"
     COMPLETE = "complete"
 
@@ -45,7 +51,13 @@ class VisaEvaluationFSM:
             FSMStates.ASK_SALARY_MODE: "Is your salary transferred to your bank account or do you receive it in cash?",
             FSMStates.ASK_TAX_INFO: "Are you a tax filer? If yes, what was your annual income in the last tax return?",
             FSMStates.ASK_BALANCE: "Can you manage a closing balance of 2 million PKR?",
-            FSMStates.ASK_TRAVEL: "What is your previous travel history in the last 5 years?"
+            FSMStates.ASK_TRAVEL: "What is your previous travel history in the last 5 years?",
+            FSMStates.ASK_LAST_TRAVEL_YEAR: "In which year was your last international travel?",
+            FSMStates.ASK_VALID_VISA: "Do you have any valid visa of USA, UK, Canada, or Australia?",
+            FSMStates.ASK_SCHENGEN_REJECTION: "Do you have any previous Schengen visa rejection? If yes, which year?",
+            FSMStates.ASK_AGE: "What is your age?",
+            FSMStates.ASK_BUSINESS_PREMISES: "Do you have an office/shop/warehouse with employees?",
+            FSMStates.ASK_BUSINESS_ONLINE_PRESENCE: "Do you have a website and Facebook page for your business?"
         }
         
         # Supported countries (Schengen/Europe)
@@ -196,12 +208,54 @@ class VisaEvaluationFSM:
         # Store travel history
         travel_info = extracted_info.get("travel_history", {})
         logger.info(f"Travel info from extraction: {travel_info}")
-        if travel_info.get("value") and travel_info.get("confidence", 0) >= 0.7:
+        if travel_info.get("value") is not None and travel_info.get("confidence", 0) >= 0.7:
             self.answers["travel_history"] = travel_info["value"]
             questions_answered.append("travel")
             logger.info(f"Stored travel history: {travel_info['value']}")
         else:
             logger.info(f"Travel history not stored - value: {travel_info.get('value')}, confidence: {travel_info.get('confidence', 0)}")
+        
+        # Store last travel year
+        last_travel_year_info = extracted_info.get("last_travel_year", {})
+        if last_travel_year_info.get("value") and last_travel_year_info.get("confidence", 0) >= 0.7:
+            self.answers["last_travel_year"] = last_travel_year_info["value"]
+            questions_answered.append("last_travel_year")
+            logger.info(f"Stored last travel year: {last_travel_year_info['value']}")
+        
+        # Store valid visa information
+        valid_visa_info = extracted_info.get("valid_visa", {})
+        if valid_visa_info.get("value") is not None and valid_visa_info.get("confidence", 0) >= 0.7:
+            self.answers["valid_visa"] = valid_visa_info["value"]
+            questions_answered.append("valid_visa")
+            logger.info(f"Stored valid visa: {valid_visa_info['value']}")
+        
+        # Store Schengen rejection information
+        schengen_rejection_info = extracted_info.get("schengen_rejection", {})
+        if schengen_rejection_info.get("value") is not None and schengen_rejection_info.get("confidence", 0) >= 0.7:
+            self.answers["schengen_rejection"] = schengen_rejection_info["value"]
+            questions_answered.append("schengen_rejection")
+            logger.info(f"Stored Schengen rejection: {schengen_rejection_info['value']}")
+        
+        # Store age information
+        age_info = extracted_info.get("age", {})
+        if age_info.get("value") and age_info.get("confidence", 0) >= 0.7:
+            self.answers["age"] = age_info["value"]
+            questions_answered.append("age")
+            logger.info(f"Stored age: {age_info['value']}")
+        
+        # Store business premises information
+        business_premises_info = extracted_info.get("business_premises", {})
+        if business_premises_info.get("value") is not None and business_premises_info.get("confidence", 0) >= 0.7:
+            self.answers["business_premises"] = business_premises_info["value"]
+            questions_answered.append("business_premises")
+            logger.info(f"Stored business premises: {business_premises_info['value']}")
+        
+        # Store business online presence information
+        business_online_presence_info = extracted_info.get("business_online_presence", {})
+        if business_online_presence_info.get("value") is not None and business_online_presence_info.get("confidence", 0) >= 0.7:
+            self.answers["business_online_presence"] = business_online_presence_info["value"]
+            questions_answered.append("business_online_presence")
+            logger.info(f"Stored business online presence: {business_online_presence_info['value']}")
         
         return questions_answered
     
@@ -221,13 +275,20 @@ class VisaEvaluationFSM:
             # Common questions
             ("tax_info", FSMStates.ASK_TAX_INFO),
             ("balance", FSMStates.ASK_BALANCE),
-            ("travel", FSMStates.ASK_TRAVEL)
+            ("travel", FSMStates.ASK_TRAVEL),
+            ("last_travel_year", FSMStates.ASK_LAST_TRAVEL_YEAR),
+            ("valid_visa", FSMStates.ASK_VALID_VISA),
+            ("schengen_rejection", FSMStates.ASK_SCHENGEN_REJECTION),
+            ("age", FSMStates.ASK_AGE),
+            ("business_premises", FSMStates.ASK_BUSINESS_PREMISES),
+            ("business_online_presence", FSMStates.ASK_BUSINESS_ONLINE_PRESENCE)
         ]
         
         # Check what's already stored in answers (not just from current extraction)
         stored_answers = set()
         if self.answers.get("selected_country") or self.answers.get("country"):
             stored_answers.add("country")
+            logger.info(f"Country already stored: {self.answers.get('selected_country') or self.answers.get('country')}")
         if self.answers.get("profession"):
             stored_answers.add("profession")
         if self.answers.get("business_type"):
@@ -238,14 +299,28 @@ class VisaEvaluationFSM:
             stored_answers.add("salary_mode")
         if self.answers.get("is_tax_filer") is not None or self.answers.get("tax_response"):
             stored_answers.add("tax_info")
-        if self.answers.get("closing_balance") or self.answers.get("balance_response"):
+        if self.answers.get("closing_balance") is not None or self.answers.get("balance_response"):
             stored_answers.add("balance")
-        if self.answers.get("travel_history"):
+        if self.answers.get("travel_history") is not None:
             stored_answers.add("travel")
+        if self.answers.get("last_travel_year"):
+            stored_answers.add("last_travel_year")
+        if self.answers.get("valid_visa") is not None:
+            stored_answers.add("valid_visa")
+        if self.answers.get("schengen_rejection") is not None:
+            stored_answers.add("schengen_rejection")
+        if self.answers.get("age"):
+            stored_answers.add("age")
+        if self.answers.get("business_premises") is not None:
+            stored_answers.add("business_premises")
+        if self.answers.get("business_online_presence") is not None:
+            stored_answers.add("business_online_presence")
         
         # Combine answered questions from current extraction and stored answers
         all_answered = set(answered_questions) | stored_answers
         logger.info(f"All answered questions: {all_answered}")
+        logger.info(f"Stored answers: {stored_answers}")
+        logger.info(f"Current extraction answers: {answered_questions}")
         
         # Determine profession type to decide which branch to follow
         profession = self.answers.get("profession", "").lower()
@@ -256,6 +331,7 @@ class VisaEvaluationFSM:
         for question, state in question_sequence:
             logger.info(f"Checking question: {question}, state: {state.value}, answered: {question in all_answered}")
             if question not in all_answered:
+                logger.info(f"Question '{question}' is NOT answered, will ask for: {state.value}")
                 # Handle branching logic
                 if question == "business_type":
                     if not is_business:
@@ -275,6 +351,64 @@ class VisaEvaluationFSM:
                         # If job holder, ask salary
                         logger.info(f"Next unanswered question: {question} -> {state.value}")
                         return state, self.questions[state]
+                elif question == "last_travel_year":
+                    # Only ask last travel year if user has travel history
+                    travel_history = self.answers.get("travel_history", "")
+                    if isinstance(travel_history, str):
+                        travel_lower = travel_history.lower().strip()
+                        if any(phrase in travel_lower for phrase in ["no", "none", "never", "no history", "no travel", "no travel history", "never traveled", "no international travel"]):
+                            # Skip last travel year if no travel history
+                            logger.info(f"Skipping last_travel_year - no travel history")
+                            continue
+                    elif isinstance(travel_history, list) and len(travel_history) == 0:
+                        # Skip last travel year if travel history is empty list (no travel)
+                        logger.info(f"Skipping last_travel_year - empty travel history list")
+                        continue
+                    # If travel history exists, ask for last travel year
+                    logger.info(f"Next unanswered question: {question} -> {state.value}")
+                    return state, self.questions[state]
+                elif question == "valid_visa":
+                    # Only ask valid visa question if user mentioned USA, UK, Canada, Australia in travel history
+                    travel_history = self.answers.get("travel_history", "")
+                    if isinstance(travel_history, str):
+                        travel_lower = travel_history.lower().strip()
+                        target_countries = ["usa", "united states", "america", "uk", "united kingdom", "britain", "england", "canada", "australia"]
+                        has_target_country = any(country in travel_lower for country in target_countries)
+                        if not has_target_country:
+                            # Skip valid visa question if no target countries in travel history
+                            logger.info(f"Skipping valid_visa - no target countries in travel history")
+                            continue
+                    elif isinstance(travel_history, list) and len(travel_history) == 0:
+                        # Skip valid visa question if travel history is empty list (no travel)
+                        logger.info(f"Skipping valid_visa - empty travel history list")
+                        continue
+                    # If target countries mentioned, ask for valid visa
+                    logger.info(f"Next unanswered question: {question} -> {state.value}")
+                    return state, self.questions[state]
+                elif question == "age":
+                    # Always ask age question
+                    logger.info(f"Next unanswered question: {question} -> {state.value}")
+                    return state, self.questions[state]
+                elif question == "business_premises":
+                    # Only ask business premises if user is a business person
+                    profession = self.answers.get("profession", "").lower()
+                    if "business" in profession:
+                        logger.info(f"Next unanswered question: {question} -> {state.value}")
+                        return state, self.questions[state]
+                    else:
+                        # Skip business premises - not a business person
+                        logger.info(f"Skipping business_premises - not a business person")
+                        continue
+                elif question == "business_online_presence":
+                    # Only ask business online presence if user is a business person
+                    profession = self.answers.get("profession", "").lower()
+                    if "business" in profession:
+                        logger.info(f"Next unanswered question: {question} -> {state.value}")
+                        return state, self.questions[state]
+                    else:
+                        # Skip business online presence - not a business person
+                        logger.info(f"Skipping business_online_presence - not a business person")
+                        continue
                 else:
                     # For common questions (country, profession, tax_info, balance, travel), proceed normally
                     logger.info(f"Next unanswered question: {question} -> {state.value}")
@@ -319,6 +453,48 @@ class VisaEvaluationFSM:
         balance_info = extracted_info.get("closing_balance", {})
         if balance_info.get("value") and balance_info.get("confidence", 0) >= 0.7:
             response_parts.append(f"I see you can manage the required financial balance.")
+        
+        # Acknowledge last travel year if provided
+        last_travel_year_info = extracted_info.get("last_travel_year", {})
+        if last_travel_year_info.get("value") and last_travel_year_info.get("confidence", 0) >= 0.7:
+            response_parts.append(f"I understand your last international travel was in {last_travel_year_info['value']}.")
+        
+        # Acknowledge valid visa information if provided
+        valid_visa_info = extracted_info.get("valid_visa", {})
+        if valid_visa_info.get("value") is not None and valid_visa_info.get("confidence", 0) >= 0.7:
+            if valid_visa_info["value"]:
+                response_parts.append(f"I see you have valid visas for USA, UK, Canada, or Australia.")
+            else:
+                response_parts.append(f"I understand you don't have valid visas for USA, UK, Canada, or Australia.")
+        
+        # Acknowledge Schengen rejection information if provided
+        schengen_rejection_info = extracted_info.get("schengen_rejection", {})
+        if schengen_rejection_info.get("value") is not None and schengen_rejection_info.get("confidence", 0) >= 0.7:
+            if schengen_rejection_info["value"]:
+                response_parts.append(f"I understand you have had a Schengen visa rejection.")
+            else:
+                response_parts.append(f"I understand you have not had any Schengen visa rejections.")
+        
+        # Acknowledge age information if provided
+        age_info = extracted_info.get("age", {})
+        if age_info.get("value") and age_info.get("confidence", 0) >= 0.7:
+            response_parts.append(f"I understand you are {age_info['value']} years old.")
+        
+        # Acknowledge business premises information if provided
+        business_premises_info = extracted_info.get("business_premises", {})
+        if business_premises_info.get("value") is not None and business_premises_info.get("confidence", 0) >= 0.7:
+            if business_premises_info["value"]:
+                response_parts.append(f"I understand you have an office/shop/warehouse with employees.")
+            else:
+                response_parts.append(f"I understand you don't have an office/shop/warehouse with employees.")
+        
+        # Acknowledge business online presence information if provided
+        business_online_presence_info = extracted_info.get("business_online_presence", {})
+        if business_online_presence_info.get("value") is not None and business_online_presence_info.get("confidence", 0) >= 0.7:
+            if business_online_presence_info["value"]:
+                response_parts.append(f"I understand you have a website and Facebook page for your business.")
+            else:
+                response_parts.append(f"I understand you don't have a website and Facebook page for your business.")
         
         # Add the next question
         if response_parts:
@@ -465,8 +641,67 @@ class VisaEvaluationFSM:
             return FSMStates.ASK_TRAVEL, self.questions[FSMStates.ASK_TRAVEL]
         
         elif current_state == FSMStates.ASK_TRAVEL:
-            # Store travel history and move to evaluation
+            # Store travel history and move to next question
             self.answers["travel_history"] = user_input
+            # Check if we should ask last travel year or valid visa
+            travel_lower = user_input.lower().strip()
+            if any(phrase in travel_lower for phrase in ["no", "none", "never", "no history", "no travel", "no travel history", "never traveled", "no international travel"]):
+                # No travel history, move to evaluation
+                return FSMStates.EVALUATION, "Evaluating your profile..."
+            else:
+                # Has travel history, ask for last travel year
+                return FSMStates.ASK_LAST_TRAVEL_YEAR, self.questions[FSMStates.ASK_LAST_TRAVEL_YEAR]
+        
+        elif current_state == FSMStates.ASK_LAST_TRAVEL_YEAR:
+            # Store last travel year and check if we should ask about valid visa
+            self.answers["last_travel_year"] = user_input
+            travel_history = self.answers.get("travel_history", "")
+            if isinstance(travel_history, str):
+                travel_lower = travel_history.lower().strip()
+                target_countries = ["usa", "united states", "america", "uk", "united kingdom", "britain", "england", "canada", "australia"]
+                has_target_country = any(country in travel_lower for country in target_countries)
+                if has_target_country:
+                    # Has target countries in travel history, ask about valid visa
+                    return FSMStates.ASK_VALID_VISA, self.questions[FSMStates.ASK_VALID_VISA]
+                else:
+                    # No target countries, move to Schengen rejection question
+                    return FSMStates.ASK_SCHENGEN_REJECTION, self.questions[FSMStates.ASK_SCHENGEN_REJECTION]
+            elif isinstance(travel_history, list) and len(travel_history) == 0:
+                # Empty travel history list (no travel), move to Schengen rejection question
+                return FSMStates.ASK_SCHENGEN_REJECTION, self.questions[FSMStates.ASK_SCHENGEN_REJECTION]
+            else:
+                # No travel history, move to Schengen rejection question
+                return FSMStates.ASK_SCHENGEN_REJECTION, self.questions[FSMStates.ASK_SCHENGEN_REJECTION]
+        
+        elif current_state == FSMStates.ASK_VALID_VISA:
+            # Store valid visa information and move to Schengen rejection question
+            self.answers["valid_visa"] = user_input
+            return FSMStates.ASK_SCHENGEN_REJECTION, self.questions[FSMStates.ASK_SCHENGEN_REJECTION]
+        
+        elif current_state == FSMStates.ASK_SCHENGEN_REJECTION:
+            # Store Schengen rejection information and move to age question
+            self.answers["schengen_rejection"] = user_input
+            return FSMStates.ASK_AGE, self.questions[FSMStates.ASK_AGE]
+        
+        elif current_state == FSMStates.ASK_AGE:
+            # Store age information and check if we should ask business questions
+            self.answers["age"] = user_input
+            profession = self.answers.get("profession", "").lower()
+            if "business" in profession:
+                # Business person, ask about business premises
+                return FSMStates.ASK_BUSINESS_PREMISES, self.questions[FSMStates.ASK_BUSINESS_PREMISES]
+            else:
+                # Not a business person, move to evaluation
+                return FSMStates.EVALUATION, "Evaluating your profile..."
+        
+        elif current_state == FSMStates.ASK_BUSINESS_PREMISES:
+            # Store business premises information and move to business online presence
+            self.answers["business_premises"] = user_input
+            return FSMStates.ASK_BUSINESS_ONLINE_PRESENCE, self.questions[FSMStates.ASK_BUSINESS_ONLINE_PRESENCE]
+        
+        elif current_state == FSMStates.ASK_BUSINESS_ONLINE_PRESENCE:
+            # Store business online presence information and move to evaluation
+            self.answers["business_online_presence"] = user_input
             return FSMStates.EVALUATION, "Evaluating your profile..."
         
         elif current_state == FSMStates.EVALUATION:
@@ -696,6 +931,12 @@ class VisaEvaluationFSM:
             FSMStates.ASK_TAX_INFO: " (Please answer: yes/no and provide annual income if yes)",
             FSMStates.ASK_BALANCE: " (Please answer: yes/no for 2 million PKR balance)",
             FSMStates.ASK_TRAVEL: " (Please list countries visited in last 5 years, or say 'none' if no travel)",
+            FSMStates.ASK_LAST_TRAVEL_YEAR: " (Please specify the year, e.g., 2023, 2022, etc.)",
+            FSMStates.ASK_VALID_VISA: " (Please answer: yes/no)",
+            FSMStates.ASK_SCHENGEN_REJECTION: " (Please answer: yes/no and specify year if yes)",
+            FSMStates.ASK_AGE: " (Please specify your age in years)",
+            FSMStates.ASK_BUSINESS_PREMISES: " (Please answer: yes/no)",
+            FSMStates.ASK_BUSINESS_ONLINE_PRESENCE: " (Please answer: yes/no)",
         }
         
         context = context_additions.get(current_state, "")
@@ -928,6 +1169,74 @@ class FSMService:
                         fsm.answers["travel_history"] = user_input
                     logger.info(f"Stored travel answer: {user_input}")
                     answered_questions.append("travel")
+            elif fsm.current_state == FSMStates.ASK_LAST_TRAVEL_YEAR:
+                if "last_travel_year" not in answered_questions:  # Only store if not already stored by extracted_info
+                    fsm.answers["last_travel_year"] = user_input
+                    logger.info(f"Stored last travel year answer: {user_input}")
+                    answered_questions.append("last_travel_year")
+            elif fsm.current_state == FSMStates.ASK_VALID_VISA:
+                if "valid_visa" not in answered_questions:  # Only store if not already stored by extracted_info
+                    # Handle valid visa information more robustly
+                    input_lower = user_input.lower().strip()
+                    if "yes" in input_lower:
+                        fsm.answers["valid_visa"] = True
+                    elif "no" in input_lower:
+                        fsm.answers["valid_visa"] = False
+                    else:
+                        # Store the response as is for later processing
+                        fsm.answers["valid_visa"] = user_input
+                    logger.info(f"Stored valid visa answer: {user_input}")
+                    answered_questions.append("valid_visa")
+            elif fsm.current_state == FSMStates.ASK_SCHENGEN_REJECTION:
+                if "schengen_rejection" not in answered_questions:  # Only store if not already stored by extracted_info
+                    # Handle Schengen rejection information more robustly
+                    input_lower = user_input.lower().strip()
+                    if "yes" in input_lower:
+                        # Try to extract year if provided
+                        import re
+                        years = re.findall(r'\b(20[12]\d|19[89]\d)\b', user_input)
+                        if years:
+                            fsm.answers["schengen_rejection"] = {"has_rejection": True, "year": years[0]}
+                        else:
+                            fsm.answers["schengen_rejection"] = {"has_rejection": True, "year": None}
+                    elif "no" in input_lower:
+                        fsm.answers["schengen_rejection"] = {"has_rejection": False, "year": None}
+                    else:
+                        # Store the response as is for later processing
+                        fsm.answers["schengen_rejection"] = user_input
+                    logger.info(f"Stored Schengen rejection answer: {user_input}")
+                    answered_questions.append("schengen_rejection")
+            elif fsm.current_state == FSMStates.ASK_AGE:
+                if "age" not in answered_questions:  # Only store if not already stored by extracted_info
+                    fsm.answers["age"] = user_input
+                    logger.info(f"Stored age answer: {user_input}")
+                    answered_questions.append("age")
+            elif fsm.current_state == FSMStates.ASK_BUSINESS_PREMISES:
+                if "business_premises" not in answered_questions:  # Only store if not already stored by extracted_info
+                    # Handle business premises information more robustly
+                    input_lower = user_input.lower().strip()
+                    if "yes" in input_lower:
+                        fsm.answers["business_premises"] = True
+                    elif "no" in input_lower:
+                        fsm.answers["business_premises"] = False
+                    else:
+                        # Store the response as is for later processing
+                        fsm.answers["business_premises"] = user_input
+                    logger.info(f"Stored business premises answer: {user_input}")
+                    answered_questions.append("business_premises")
+            elif fsm.current_state == FSMStates.ASK_BUSINESS_ONLINE_PRESENCE:
+                if "business_online_presence" not in answered_questions:  # Only store if not already stored by extracted_info
+                    # Handle business online presence information more robustly
+                    input_lower = user_input.lower().strip()
+                    if "yes" in input_lower:
+                        fsm.answers["business_online_presence"] = True
+                    elif "no" in input_lower:
+                        fsm.answers["business_online_presence"] = False
+                    else:
+                        # Store the response as is for later processing
+                        fsm.answers["business_online_presence"] = user_input
+                    logger.info(f"Stored business online presence answer: {user_input}")
+                    answered_questions.append("business_online_presence")
             
             # For country selection, use traditional logic
             if fsm.current_state == FSMStates.ASK_COUNTRY:

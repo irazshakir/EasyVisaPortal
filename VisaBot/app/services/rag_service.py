@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 from loguru import logger
 
-from app.services.groq_service import groq_service
+from app.services.openai_service import openai_service
 from app.core.config import settings
 
 
@@ -51,7 +51,7 @@ class RAGService:
     """RAG service for handling off-track questions and complex evaluations"""
     
     def __init__(self):
-        self.groq_service = groq_service
+        self.openai_service = openai_service
         self.faq_database = self._initialize_faq_database()
         self.evaluation_rules = self._initialize_evaluation_rules()
         self.scenarios = self._load_scenarios()
@@ -256,7 +256,7 @@ class RAGService:
             ]
             
             # Get LLM response
-            llm_response = await self.groq_service.generate_response(messages, system_prompt)
+            llm_response = await self.openai_service.generate_response(messages, system_prompt)
             
             # Parse the JSON response
             evaluation_result = self._parse_scenario_evaluation_response(llm_response)
@@ -616,7 +616,7 @@ class RAGService:
         ]
         
         try:
-            response = await self.groq_service.generate_response(messages, system_prompt)
+            response = await self.openai_service.generate_response(messages, system_prompt)
             
             # Extract transition message
             lines = response.split('\n')

@@ -81,23 +81,23 @@ async def test_chat_service():
         return False
 
 
-async def test_groq_service():
-    """Test Groq service"""
+async def test_openai_service():
+    """Test OpenAI service"""
     try:
-        from app.services.groq_service import GroqService
+        from app.services.openai_service import OpenAIService
         
-        groq_service = GroqService()
+        openai_service = OpenAIService()
         
         # Test intent analysis
-        intent_result = await groq_service.analyze_intent("I want to apply for a tourist visa")
+        intent_result = await openai_service.analyze_intent("I want to apply for a tourist visa")
         
-        logger.info(f"✅ Groq service test successful")
+        logger.info(f"✅ OpenAI service test successful")
         logger.info(f"   Intent: {intent_result.get('intent')}")
         logger.info(f"   Confidence: {intent_result.get('confidence')}")
         
         return True
     except Exception as e:
-        logger.error(f"❌ Groq service test failed: {e}")
+        logger.error(f"❌ OpenAI service test failed: {e}")
         return False
 
 
@@ -134,7 +134,7 @@ async def run_integration_test():
     tests = [
         ("Redis Connection", test_redis_connection),
         ("Database Connection", test_database_connection),
-        ("Groq Service", test_groq_service),
+        ("OpenAI Service", test_openai_service),
         ("FSM Service", test_fsm_service),
         ("Chat Service", test_chat_service),
     ]

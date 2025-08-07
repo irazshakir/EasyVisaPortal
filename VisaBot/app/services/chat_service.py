@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from loguru import logger
 
 from app.services.fsm_service import fsm_service, FSMStates
-from app.services.groq_service import groq_service
+from app.services.openai_service import openai_service
 from app.services.session_service import session_service
 from app.models.chat import ChatRequest, ChatResponse
 from app.services.rag_service import rag_service
@@ -16,7 +16,7 @@ class ChatService:
     """Main chat service for visa evaluation bot"""
     
     def __init__(self):
-        self.groq_service = groq_service
+        self.openai_service = openai_service
     
     async def process_chat_message(self, chat_request: ChatRequest) -> ChatResponse:
         """
@@ -70,8 +70,8 @@ class ChatService:
                     metadata={"is_complete": True}
                 )
             
-            # Parse user input using Groq for enhanced information extraction
-            parsed_input = await self.groq_service.parse_user_input(current_state.value, chat_request.message)
+            # Parse user input using OpenAI for enhanced information extraction
+            parsed_input = await self.openai_service.parse_user_input(current_state.value, chat_request.message)
             logger.info(f"Enhanced parsing result: {parsed_input}")
             
             # Extract the structured information for smart processing

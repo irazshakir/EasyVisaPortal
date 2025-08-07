@@ -144,6 +144,12 @@ class GroqService:
             6. **Tax Information**: Tax filing status and income amounts
             7. **Financial Capacity**: Bank balance, savings, financial ability (especially 2M PKR requirement)
             8. **Travel History**: Previous travel experience, countries visited, etc.
+            9. **Last Travel Year**: Year of last international travel (e.g., 2023, 2022, etc.)
+            10. **Valid Visa**: Whether user has valid visas for USA, UK, Canada, or Australia
+            11. **Schengen Rejection**: Whether user has had any previous Schengen visa rejections and the year
+            12. **Age**: User's age in years
+            13. **Business Premises**: Whether user has an office/shop/warehouse with employees
+            14. **Business Online Presence**: Whether user has a website and Facebook page for their business
             
             Return a JSON object with this structure:
             {
@@ -156,10 +162,16 @@ class GroqService:
                     "tax_filer": {"value": true/false/null, "confidence": 0.0-1.0, "source": "explicit/implicit"},
                     "annual_income": {"value": number/null, "confidence": 0.0-1.0, "source": "explicit/implicit"},
                     "closing_balance": {"value": number/null, "confidence": 0.0-1.0, "source": "explicit/implicit"},
-                    "travel_history": {"value": "description", "confidence": 0.0-1.0, "source": "explicit/implicit"}
+                    "travel_history": {"value": "description", "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "last_travel_year": {"value": "year", "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "valid_visa": {"value": true/false/null, "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "schengen_rejection": {"value": true/false/null, "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "age": {"value": "age_in_years", "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "business_premises": {"value": true/false/null, "confidence": 0.0-1.0, "source": "explicit/implicit"},
+                    "business_online_presence": {"value": true/false/null, "confidence": 0.0-1.0, "source": "explicit/implicit"}
                 },
                 "overall_confidence": 0.0-1.0,
-                "questions_answered": ["country", "profession", "business_type", "salary", "salary_mode", "tax_info", "balance", "travel"],
+                "questions_answered": ["country", "profession", "business_type", "salary", "salary_mode", "tax_info", "balance", "travel", "last_travel_year", "valid_visa", "schengen_rejection", "age", "business_premises", "business_online_presence"],
                 "raw_input": "original_user_input"
             }
             
@@ -177,6 +189,12 @@ class GroqService:
             - For travel history, handle both positive and negative responses:
               * Positive: "Dubai, Sri Lanka, Saudi Arabia" -> ["Dubai", "Sri Lanka", "Saudi Arabia"]
               * Negative: "no travel", "none", "never traveled" -> []
+            - For last travel year, extract the year (e.g., "2023", "2022", "last year", "2 years ago")
+            - For valid visa, determine if user has valid visas for USA, UK, Canada, or Australia
+            - For Schengen rejection, determine if user has had any Schengen visa rejections and extract the year if mentioned
+            - For age, extract the age in years (e.g., "25", "30 years old", "I am 35")
+            - For business premises, determine if user has an office/shop/warehouse with employees
+            - For business online presence, determine if user has a website and Facebook page for their business
             - Only include questions_answered for information that is clearly provided
             """
             
@@ -215,7 +233,13 @@ class GroqService:
             "tax_filer": {"value": None, "confidence": 0.0, "source": "none"},
             "annual_income": {"value": None, "confidence": 0.0, "source": "none"},
             "closing_balance": {"value": None, "confidence": 0.0, "source": "none"},
-            "travel_history": {"value": None, "confidence": 0.0, "source": "none"}
+            "travel_history": {"value": None, "confidence": 0.0, "source": "none"},
+            "last_travel_year": {"value": None, "confidence": 0.0, "source": "none"},
+            "valid_visa": {"value": None, "confidence": 0.0, "source": "none"},
+            "schengen_rejection": {"value": None, "confidence": 0.0, "source": "none"},
+            "age": {"value": None, "confidence": 0.0, "source": "none"},
+            "business_premises": {"value": None, "confidence": 0.0, "source": "none"},
+            "business_online_presence": {"value": None, "confidence": 0.0, "source": "none"}
         }
         
         questions_answered = []
@@ -339,6 +363,110 @@ class GroqService:
                     "source": "explicit"
                 }
                 questions_answered.append("travel")
+        
+        # Basic last travel year detection
+        import re
+        year_pattern = r'\b(20[12]\d|19[89]\d)\b'  # Match years 1980-2029
+        years = re.findall(year_pattern, input_lower)
+        if years:
+            extracted_info["last_travel_year"] = {
+                "value": years[0],
+                "confidence": 0.8,
+                "source": "explicit"
+            }
+            questions_answered.append("last_travel_year")
+        
+        # Basic valid visa detection
+        valid_visa_keywords = ["valid visa", "active visa", "current visa", "visa valid", "have visa"]
+        if any(phrase in input_lower for phrase in valid_visa_keywords):
+            if "yes" in input_lower or "have" in input_lower:
+                extracted_info["valid_visa"] = {
+                    "value": True,
+                    "confidence": 0.8,
+                    "source": "explicit"
+                }
+                questions_answered.append("valid_visa")
+            elif "no" in input_lower or "don't" in input_lower or "not" in input_lower:
+                extracted_info["valid_visa"] = {
+                    "value": False,
+                    "confidence": 0.8,
+                    "source": "explicit"
+                }
+                questions_answered.append("valid_visa")
+        
+        # Basic Schengen rejection detection
+        schengen_rejection_keywords = ["schengen rejection", "visa rejection", "rejected", "denied", "refused"]
+        if any(phrase in input_lower for phrase in schengen_rejection_keywords):
+            if "yes" in input_lower or "had" in input_lower or "rejected" in input_lower:
+                # Try to extract year if provided
+                years = re.findall(r'\b(20[12]\d|19[89]\d)\b', input_lower)
+                if years:
+                    extracted_info["schengen_rejection"] = {
+                        "value": {"has_rejection": True, "year": years[0]},
+                        "confidence": 0.8,
+                        "source": "explicit"
+                    }
+                else:
+                    extracted_info["schengen_rejection"] = {
+                        "value": {"has_rejection": True, "year": None},
+                        "confidence": 0.8,
+                        "source": "explicit"
+                    }
+                questions_answered.append("schengen_rejection")
+            elif "no" in input_lower or "never" in input_lower or "not" in input_lower:
+                extracted_info["schengen_rejection"] = {
+                    "value": {"has_rejection": False, "year": None},
+                    "confidence": 0.8,
+                    "source": "explicit"
+                }
+                questions_answered.append("schengen_rejection")
+        
+        # Basic age detection
+        age_pattern = r'\b(\d{1,2})\s*(?:years?\s*old?|y\.?o\.?|age)\b'
+        age_matches = re.findall(age_pattern, input_lower)
+        if age_matches:
+            extracted_info["age"] = {
+                "value": age_matches[0],
+                "confidence": 0.8,
+                "source": "explicit"
+            }
+            questions_answered.append("age")
+        
+        # Basic business premises detection
+        business_premises_keywords = ["office", "shop", "warehouse", "employees", "staff", "workers"]
+        if any(phrase in input_lower for phrase in business_premises_keywords):
+            if "yes" in input_lower or "have" in input_lower:
+                extracted_info["business_premises"] = {
+                    "value": True,
+                    "confidence": 0.8,
+                    "source": "explicit"
+                }
+                questions_answered.append("business_premises")
+            elif "no" in input_lower or "don't" in input_lower or "not" in input_lower:
+                extracted_info["business_premises"] = {
+                    "value": False,
+                    "confidence": 0.8,
+                    "source": "explicit"
+                }
+                questions_answered.append("business_premises")
+        
+        # Basic business online presence detection
+        online_presence_keywords = ["website", "facebook", "fb", "page", "online", "social media"]
+        if any(phrase in input_lower for phrase in online_presence_keywords):
+            if "yes" in input_lower or "have" in input_lower:
+                extracted_info["business_online_presence"] = {
+                    "value": True,
+                    "confidence": 0.8,
+                    "source": "explicit"
+                }
+                questions_answered.append("business_online_presence")
+            elif "no" in input_lower or "don't" in input_lower or "not" in input_lower:
+                extracted_info["business_online_presence"] = {
+                    "value": False,
+                    "confidence": 0.8,
+                    "source": "explicit"
+                }
+                questions_answered.append("business_online_presence")
         
         return {
             "extracted_info": extracted_info,
