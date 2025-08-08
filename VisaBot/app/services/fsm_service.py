@@ -28,6 +28,7 @@ class FSMStates(Enum):
     ASK_AGE = "ask_age"  # New state for age
     ASK_BUSINESS_PREMISES = "ask_business_premises"  # New state for business premises
     ASK_BUSINESS_ONLINE_PRESENCE = "ask_business_online_presence"  # New state for business online presence
+    ASK_BUSINESS_ASSETS = "ask_business_assets"  # New state for manufacturing/inventory/agri
     EVALUATION = "evaluation"
     COMPLETE = "complete"
 
@@ -57,7 +58,8 @@ class VisaEvaluationFSM:
             FSMStates.ASK_SCHENGEN_REJECTION: "Do you have any previous Schengen visa rejection? If yes, which year?",
             FSMStates.ASK_AGE: "What is your age?",
             FSMStates.ASK_BUSINESS_PREMISES: "Do you have an office/shop/warehouse with employees?",
-            FSMStates.ASK_BUSINESS_ONLINE_PRESENCE: "Do you have a website and Facebook page for your business?"
+            FSMStates.ASK_BUSINESS_ONLINE_PRESENCE: "Do you have a website and Facebook page for your business?",
+            FSMStates.ASK_BUSINESS_ASSETS: "Does your business include manufacturing/keeping inventory of products/agricultural land?"
         }
         
         # Supported countries (Schengen/Europe)
@@ -205,15 +207,26 @@ class VisaEvaluationFSM:
             questions_answered.append("balance")
             logger.info(f"Stored closing balance: {balance_info['value']}")
         
-        # Store travel history
+        # Store travel history (only if non-empty / meaningful)
         travel_info = extracted_info.get("travel_history", {})
         logger.info(f"Travel info from extraction: {travel_info}")
-        if travel_info.get("value") is not None and travel_info.get("confidence", 0) >= 0.7:
-            self.answers["travel_history"] = travel_info["value"]
+        try:
+            confidence = float(travel_info.get("confidence", 0))
+        except Exception:
+            confidence = 0.0
+        travel_value = travel_info.get("value")
+        is_meaningful = (
+            (isinstance(travel_value, list) and len(travel_value) > 0) or
+            (isinstance(travel_value, str) and travel_value.strip() != "")
+        )
+        if is_meaningful and confidence >= 0.7:
+            self.answers["travel_history"] = travel_value
             questions_answered.append("travel")
-            logger.info(f"Stored travel history: {travel_info['value']}")
+            logger.info(f"Stored travel history (extracted): {travel_value}")
         else:
-            logger.info(f"Travel history not stored - value: {travel_info.get('value')}, confidence: {travel_info.get('confidence', 0)}")
+            logger.info(
+                f"Travel history not stored from extraction - value: {travel_value}, confidence: {confidence}"
+            )
         
         # Store last travel year
         last_travel_year_info = extracted_info.get("last_travel_year", {})
@@ -256,6 +269,13 @@ class VisaEvaluationFSM:
             self.answers["business_online_presence"] = business_online_presence_info["value"]
             questions_answered.append("business_online_presence")
             logger.info(f"Stored business online presence: {business_online_presence_info['value']}")
+
+        # Store business assets/manufacturing/inventory/agri information
+        business_assets_info = extracted_info.get("business_assets", {})
+        if business_assets_info.get("value") is not None and business_assets_info.get("confidence", 0) >= 0.7:
+            self.answers["business_assets"] = business_assets_info["value"]
+            questions_answered.append("business_assets")
+            logger.info(f"Stored business assets: {business_assets_info['value']}")
         
         return questions_answered
     
@@ -281,6 +301,7 @@ class VisaEvaluationFSM:
             ("schengen_rejection", FSMStates.ASK_SCHENGEN_REJECTION),
             ("age", FSMStates.ASK_AGE),
             ("business_premises", FSMStates.ASK_BUSINESS_PREMISES),
+            ("business_assets", FSMStates.ASK_BUSINESS_ASSETS),
             ("business_online_presence", FSMStates.ASK_BUSINESS_ONLINE_PRESENCE)
         ]
         
@@ -303,6 +324,9 @@ class VisaEvaluationFSM:
             stored_answers.add("balance")
         if self.answers.get("travel_history") is not None:
             stored_answers.add("travel")
+            logger.info(f"TRAVEL CHECK: travel_history found in answers: {self.answers.get('travel_history')}")
+        else:
+            logger.info(f"TRAVEL CHECK: travel_history NOT found in answers")
         if self.answers.get("last_travel_year"):
             stored_answers.add("last_travel_year")
         if self.answers.get("valid_visa") is not None:
@@ -313,6 +337,8 @@ class VisaEvaluationFSM:
             stored_answers.add("age")
         if self.answers.get("business_premises") is not None:
             stored_answers.add("business_premises")
+        if self.answers.get("business_assets") is not None:
+            stored_answers.add("business_assets")
         if self.answers.get("business_online_presence") is not None:
             stored_answers.add("business_online_presence")
         
@@ -332,6 +358,8 @@ class VisaEvaluationFSM:
             logger.info(f"Checking question: {question}, state: {state.value}, answered: {question in all_answered}")
             if question not in all_answered:
                 logger.info(f"Question '{question}' is NOT answered, will ask for: {state.value}")
+                logger.info(f"Current answers: {self.answers}")
+                logger.info(f"All answered questions: {all_answered}")
                 # Handle branching logic
                 if question == "business_type":
                     if not is_business:
@@ -411,6 +439,10 @@ class VisaEvaluationFSM:
                         continue
                 else:
                     # For common questions (country, profession, tax_info, balance, travel), proceed normally
+                    if question == "travel":
+                        logger.info(f"TRAVEL QUESTION: Next unanswered question: {question} -> {state.value}")
+                        logger.info(f"TRAVEL QUESTION: Current answers: {self.answers}")
+                        logger.info(f"TRAVEL QUESTION: All answered questions: {all_answered}")
                     logger.info(f"Next unanswered question: {question} -> {state.value}")
                     return state, self.questions[state]
         
@@ -643,13 +675,16 @@ class VisaEvaluationFSM:
         elif current_state == FSMStates.ASK_TRAVEL:
             # Store travel history and move to next question
             self.answers["travel_history"] = user_input
+            logger.info(f"ASK_TRAVEL: Stored travel_history: {user_input}")
             # Check if we should ask last travel year or valid visa
             travel_lower = user_input.lower().strip()
             if any(phrase in travel_lower for phrase in ["no", "none", "never", "no history", "no travel", "no travel history", "never traveled", "no international travel"]):
-                # No travel history, move to evaluation
-                return FSMStates.EVALUATION, "Evaluating your profile..."
+                # No travel history, move to Schengen rejection question
+                logger.info(f"ASK_TRAVEL: No travel history detected, moving to ASK_SCHENGEN_REJECTION")
+                return FSMStates.ASK_SCHENGEN_REJECTION, self.questions[FSMStates.ASK_SCHENGEN_REJECTION]
             else:
-                # Has travel history, ask for last travel year
+                # Has travel history, move to last travel year
+                logger.info(f"ASK_TRAVEL: Has travel history, moving to ASK_LAST_TRAVEL_YEAR")
                 return FSMStates.ASK_LAST_TRAVEL_YEAR, self.questions[FSMStates.ASK_LAST_TRAVEL_YEAR]
         
         elif current_state == FSMStates.ASK_LAST_TRAVEL_YEAR:
@@ -695,8 +730,13 @@ class VisaEvaluationFSM:
                 return FSMStates.EVALUATION, "Evaluating your profile..."
         
         elif current_state == FSMStates.ASK_BUSINESS_PREMISES:
-            # Store business premises information and move to business online presence
+            # Store business premises information and move to business assets
             self.answers["business_premises"] = user_input
+            return FSMStates.ASK_BUSINESS_ASSETS, self.questions[FSMStates.ASK_BUSINESS_ASSETS]
+
+        elif current_state == FSMStates.ASK_BUSINESS_ASSETS:
+            # Store business assets/manufacturing/inventory/agri and move to online presence
+            self.answers["business_assets"] = user_input
             return FSMStates.ASK_BUSINESS_ONLINE_PRESENCE, self.questions[FSMStates.ASK_BUSINESS_ONLINE_PRESENCE]
         
         elif current_state == FSMStates.ASK_BUSINESS_ONLINE_PRESENCE:
@@ -1159,16 +1199,39 @@ class FSMService:
                     logger.info(f"Stored balance answer: {user_input}")
                     answered_questions.append("balance")
             elif fsm.current_state == FSMStates.ASK_TRAVEL:
-                if "travel" not in answered_questions:  # Only store if not already stored by extracted_info
-                    # Handle travel history more robustly
-                    input_lower = user_input.lower().strip()
-                    if any(phrase in input_lower for phrase in ["no", "none", "never", "no history", "no travel", "no travel history", "never traveled", "no international travel"]):
+                logger.info(f"PROCESS_USER_INPUT: Processing ASK_TRAVEL state with input: {user_input}")
+                input_lower = user_input.lower().strip()
+                negative_phrases = [
+                    "no", "none", "never", "no history", "no travel", "no travel history",
+                    "never traveled", "no international travel"
+                ]
+                if "travel" not in answered_questions:
+                    # Primary storage from raw input
+                    if any(phrase in input_lower for phrase in negative_phrases):
                         fsm.answers["travel_history"] = []
+                        logger.info("PROCESS_USER_INPUT: Stored empty travel_history (no travel)")
                     else:
-                        # Store the response as travel_history for consistency
                         fsm.answers["travel_history"] = user_input
+                        logger.info(f"PROCESS_USER_INPUT: Stored travel_history from raw: {user_input}")
                     logger.info(f"Stored travel answer: {user_input}")
                     answered_questions.append("travel")
+                else:
+                    # Fallback: if extracted info marked travel as answered but value is empty, recover from raw input
+                    current_travel = fsm.answers.get("travel_history")
+                    is_empty = (
+                        current_travel is None or
+                        (isinstance(current_travel, list) and len(current_travel) == 0) or
+                        (isinstance(current_travel, str) and current_travel.strip() == "")
+                    )
+                    if is_empty:
+                        if any(phrase in input_lower for phrase in negative_phrases):
+                            fsm.answers["travel_history"] = []
+                            logger.info("PROCESS_USER_INPUT: Recovered empty travel_history (no travel)")
+                        else:
+                            fsm.answers["travel_history"] = user_input
+                            logger.info(f"PROCESS_USER_INPUT: Recovered travel_history from raw: {user_input}")
+                    else:
+                        logger.info("PROCESS_USER_INPUT: Travel already answered by extracted_info (non-empty)")
             elif fsm.current_state == FSMStates.ASK_LAST_TRAVEL_YEAR:
                 if "last_travel_year" not in answered_questions:  # Only store if not already stored by extracted_info
                     fsm.answers["last_travel_year"] = user_input
@@ -1224,6 +1287,18 @@ class FSMService:
                         fsm.answers["business_premises"] = user_input
                     logger.info(f"Stored business premises answer: {user_input}")
                     answered_questions.append("business_premises")
+            elif fsm.current_state == FSMStates.ASK_BUSINESS_ASSETS:
+                if "business_assets" not in answered_questions:  # Only store if not already stored by extracted_info
+                    input_lower = user_input.lower().strip()
+                    if "yes" in input_lower:
+                        fsm.answers["business_assets"] = True
+                    elif "no" in input_lower:
+                        fsm.answers["business_assets"] = False
+                    else:
+                        # Store the response as is for later processing
+                        fsm.answers["business_assets"] = user_input
+                    logger.info(f"Stored business assets answer: {user_input}")
+                    answered_questions.append("business_assets")
             elif fsm.current_state == FSMStates.ASK_BUSINESS_ONLINE_PRESENCE:
                 if "business_online_presence" not in answered_questions:  # Only store if not already stored by extracted_info
                     # Handle business online presence information more robustly

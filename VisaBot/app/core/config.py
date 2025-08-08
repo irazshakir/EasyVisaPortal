@@ -24,10 +24,10 @@ class Settings(BaseSettings):
     
     # OpenAI settings (primary LLM service)
     OPENAI_API_KEY: str
-    OPENAI_MODEL: str = "gpt-3.5-turbo"  # Using cheaper model
-    OPENAI_EVALUATION_MODEL: str = "gpt-3.5-turbo"  # Using cheaper model for evaluation too
+    OPENAI_MODEL: str = "gpt-4.1"  # Using cheaper model
+    OPENAI_EVALUATION_MODEL: str = "gpt-4.1"  # Using cheaper model for evaluation too
     OPENAI_MAX_TOKENS: int = 1500  # Reduced token limit to save costs
-    OPENAI_TEMPERATURE: float = 0.7
+    OPENAI_TEMPERATURE: float = 0.2
     
     # Groq settings (optional - keeping for backward compatibility)
     GROQ_API_KEY: Optional[str] = None

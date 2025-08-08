@@ -29,12 +29,12 @@
 - **Strengths**: Strong financial stability , ties to home country , but eligible for business visa only except if client has continous travel history in each last two years to different destinations.
 - **Recommendations**: 
   - Proper documentation with valid travel reason and proof of strong financial ties with home country.
-  - First time applying for schengen visa needs to be cautious , apply only Business visa with proper documentation
-  - Should have valid reason to travel , show strong business ties to homeland , proper file preparation is king here.
+  - First time applying for schengen visa needs to be cautious, apply only Business visa with proper documentation.
+  - Should have valid reason to travel, show strong business ties to homeland, proper file preparation is king here.
   - Push such client to use our portal to create their file to ensure 90% success ratio. Our AI will create a proper case and prepare documents accordingly.
   - As client has no previous visa history of top countries so they have to be extra vigilant when applying for schengen visa.
-  - Client should deligently select the country for which they should apply , do not apply for visa without proper homework.
-  - First time is the charm as their profile in schengen system will be saved , so documentation should be proper and according to best practices that addresses the concern of the visa officer.
+  - Client should diligently select the country for which they should apply, do not apply for visa without proper homework.
+  - First time is the charm as their profile in schengen system will be saved, so documentation should be proper and according to best practices that addresses the concern of the visa officer.
 - **Application Strategy**: Better to apply only for business visa , book an appointment , prepare documents using our portal which will ensure visa success ratio. Proper homework in decision of which country visa to apply , apply with proper business invitation or events that correspond with client's business. Do not apply for tourist visa.
 - **Required Documents**: Passport first and second page , CNIC (front and back) , FRC and MRC , NTN Registration page , Last two years tax returns , 3 months Bank statement , Bank Letter , Passport should have vallidity of 6 months at time of visa submission
 

@@ -1,0 +1,178 @@
+[
+    {
+      "scenario_name": "Travel History of min 4 countries, Schengen Travel History and valid visa of USA, UK, Canada and Australia",
+      "criteria": {
+        "applying_schengen_country": ["Europe", "Schengen", "France", "Italy", "Spain", "Ireland", "Portugal",
+                                        "Germany", "Belgium", "Netherlands", "Holland", "Poland", "Bulgaria",
+                                        "Norway", "Denmark", "Greece", "Hungary", "Austria", "Switzerland",
+                                        "Luxembourg", "Slovenia", "Slovakia", "Czech Republic", "Czech",
+                                        "Estonia", "Latvia", "Lithuania", "Malta", "Iceland", "Liechtenstein",
+                                        "Finland", "Sweden", "Croatia", "Romania", "Cyprus"],
+        "applicant_type": "businessman",
+        "business": {
+          "has_office_with_employees": true,
+          "has_website": true
+        },
+        "job": null,
+        "tax_filer": true,
+        "annual_income_min": 1200000,
+        "closing_balance_min": 2000000,
+        "travel_history": {
+          "countries_min": 3,
+          "has_top_tier_visa": true,
+          "last_travel_gap_years_max": 2 
+        },
+        "previous_schengen_rejection": {
+          "has_rejection": false
+        },
+        "age_min": 30
+      },
+      "success_ratio": 90,
+      "strengths": ["Strong business ties", "Top-tier visa", "Recent travel history", "Valid visa of USA, UK, Canada and Australia" ,"Previous Schengen travel history"],
+      "recommendations": [
+        "Strong business ties, previous travel history of top-tier countries, Strong documented financial stability",
+        "Good eligibility for Schengen business or tourist visa.",
+        "If planning to travel with family then apply for tourist visa with proper valid travel reasons, bookings, travel plan. Prefer countries like belgium , netherlands , spain , malta , Greece.",
+        "Be cautious in tourist visa as sometimes due to lack ofproper documentation results in rejection which can be bad impact on your schengen visa history.",
+        "If planning to travel alone then do not apply for tourist visa, simply choose business visa with proper valid documentation including invitations and bookings. Mention strong business ties in the documentation to validate return."
+      ],
+      "application_strategy": [
+        "Choose between tourist or business visa based on our recommendation.",
+        "Check the appointment availability of country from VFS global website or embassy website.",
+        "Getting appointment of tourist category is difficult for some countries so try looking for vendors who can help you get appointment. Busines visa appointments are easier to get.",
+        "After appointment prepare your documents and if applying for tourist visa then make sure to show strong business ties and valid travel plan with hotel bookings and activity bookings.",
+        "Our AI visa file preparation can also help you in that, to ensure proper documentation and ensuring 95% success rate. You can also just get the expert help to prepare your documents and get the visa."
+      ],
+      "required_documents": ["Passport", "CNIC", "Last two years Tax returns", "Bank statement of last 3 months", "NTN registration" , "FRC and MRC", "Bank Letter" , "Insurance" , "Flight itinerary", "Hotel Bookings"]
+    },
+    {
+      "scenario_name": "Businessman with strong business ties, Travel History of 4 countries and valid visa of USA, UK, Canada and Australia. No previous Schengen visa history.",
+      "criteria": {
+        "applying_schengen_country": ["Europe", "Schengen", "France", "Italy", "Spain", "Ireland", "Portugal",
+                                        "Germany", "Belgium", "Netherlands", "Holland", "Poland", "Bulgaria",
+                                        "Norway", "Denmark", "Greece", "Hungary", "Austria", "Switzerland",
+                                        "Luxembourg", "Slovenia", "Slovakia", "Czech Republic", "Czech",
+                                        "Estonia", "Latvia", "Lithuania", "Malta", "Iceland", "Liechtenstein",
+                                        "Finland", "Sweden", "Croatia", "Romania", "Cyprus"],
+        "applicant_type": "businessman",
+        "business": {
+          "has_office_with_employees": true,
+          "has_website": true
+        },
+        "job": null,
+        "tax_filer": true,
+        "annual_income_min": 1200000,
+        "closing_balance_min": 2000000,
+        "travel_history": {
+          "countries_min": 3,
+          "has_top_tier_visa": true,
+          "last_travel_gap_years_max": 2
+        },
+        "previous_schengen_rejection": {
+          "has_rejection": false
+        },
+        "age_min": 30
+      },
+      "success_ratio": 85,
+      "strengths": ["Strong business ties", "Top-tier visa", "Recent travel history", "Valid visa of USA, UK, Canada and Australia"],
+      "recommendations": [
+        "Strong business ties, previous travel historyand valid top-tier country visa, Strong documented financial stability",
+        "As no previous schengen visa history, its recommended to apply for schengen business visa only. It has high probability of getting approved. Apply single country visa with proper valid travel reason in terms of invitation.",
+        "Normally we recommend avoid apply for tourist visa with family or as single person, but if you are adament to apply with family then only apply Tourist visa. Prefer countries like belgium , netherlands , spain , malta , Greece.",
+        "If choosing to apply tourist visa provide proper documented travel reason with travel plan , hotel bookings , activity bookings , flight tickets , etc. Prefer countries like belgium , netherlands , spain , malta , Greece.",
+        "If planning to travel alone then do not apply for tourist visa, simply choose business visa with proper valid documentation including invitations and bookings. Mention strong business ties in the documentation to validate return.",
+        "First time is the charm, so avoid being casual as you have good travel history, top-tier country visa and strong business ties. Careless documentation can lead to rejection which can be bad impact on your schengen visa history."
+      ],
+      "application_strategy": [
+        "Choose between tourist or business visa based on our recommendation.",
+        "Check the appointment availability of country from VFS global website or embassy website.",
+        "Getting appointment of tourist category is difficult for some countries so try looking for vendors who can help you get appointment. Busines visa appointments are easier to get.",
+        "After appointment prepare your documents and if applying for tourist visa then make sure to show strong business ties and valid travel plan with hotel bookings and activity bookings.",
+        "Our AI visa file preparation can also help you in that, to ensure proper documentation and ensuring 95% success rate. You can also just get the expert help to prepare your documents and get the visa."
+      ],
+      "required_documents": ["Passport", "CNIC", "Last two years Tax returns", "Bank statement of last 3 months", "NTN registration" , "FRC and MRC", "Bank Letter" , "Insurance" , "Flight itinerary", "Hotel Bookings"]
+    },
+    {
+        "scenario_name": "Businessman with strong business ties, Travel History of min 1 country and valid visa of USA, UK, Canada and Australia.",
+        "criteria": {
+          "applying_schengen_country": ["Europe", "Schengen", "France", "Italy", "Spain", "Ireland", "Portugal",
+                                          "Germany", "Belgium", "Netherlands", "Holland", "Poland", "Bulgaria",
+                                          "Norway", "Denmark", "Greece", "Hungary", "Austria", "Switzerland",
+                                          "Luxembourg", "Slovenia", "Slovakia", "Czech Republic", "Czech",
+                                          "Estonia", "Latvia", "Lithuania", "Malta", "Iceland", "Liechtenstein",
+                                          "Finland", "Sweden", "Croatia", "Romania", "Cyprus"],
+          "applicant_type": "businessman",
+          "business": {
+            "has_office_with_employees": true,
+            "has_website": true
+          },
+          "job": null,
+          "tax_filer": true,
+          "annual_income_min": 1200000,
+          "closing_balance_min": 2000000,
+          "travel_history": {
+            "countries_min": 1,
+            "has_top_tier_visa": true,
+            "last_travel_gap_years_max": 2
+          },
+          "previous_schengen_rejection": {
+            "has_rejection": false
+          },
+          "age_min": 30
+        },
+        "success_ratio": 85,
+        "strengths": ["Strong business ties", "Top-tier visa", "Recent travel history", "Valid visa of USA, UK, Canada and Australia"],
+        "recommendations": [
+          "Strong business ties, previous travel historyand valid top-tier country visa, Strong documented financial stability",
+          "As no previous schengen visa history, its recommended to apply for schengen business visa only. It has high probability of getting approved. Apply single country visa with proper valid travel reason in terms of invitation.",
+          "Normally we recommend avoid apply for tourist visa with family or as single person, but if you are adament to apply with family then only apply Tourist visa. Prefer countries like belgium , netherlands , spain , malta , Greece.",
+          "If choosing to apply tourist visa provide proper documented travel reason with travel plan , hotel bookings , activity bookings , flight tickets , etc. Prefer countries like belgium , netherlands , spain , malta , Greece.",
+          "If planning to travel alone then do not apply for tourist visa, simply choose business visa with proper valid documentation including invitations and bookings. Mention strong business ties in the documentation to validate return.",
+          "First time is the charm, so avoid being casual as you have good travel history, top-tier country visa and strong business ties. Careless documentation can lead to rejection which can be bad impact on your schengen visa history."
+        ],
+        "application_strategy": [
+          "Choose between tourist or business visa based on our recommendation.",
+          "Check the appointment availability of country from VFS global website or embassy website.",
+          "Getting appointment of tourist category is difficult for some countries so try looking for vendors who can help you get appointment. Busines visa appointments are easier to get.",
+          "After appointment prepare your documents and if applying for tourist visa then make sure to show strong business ties and valid travel plan with hotel bookings and activity bookings.",
+          "Our AI visa file preparation can also help you in that, to ensure proper documentation and ensuring 95% success rate. You can also just get the expert help to prepare your documents and get the visa."
+        ],
+        "required_documents": ["Passport", "CNIC", "Last two years Tax returns", "Bank statement of last 3 months", "NTN registration" , "FRC and MRC", "Bank Letter" , "Insurance" , "Flight itinerary", "Hotel Bookings"]
+    },
+    {
+      "scenario_name": "Young applicant under 25 with no travel history",
+      "criteria": {
+        "applying_schengen_country": ["Europe", "Schengen", "France", "Italy", "Spain", "Ireland", "Portugal",
+                                        "Germany", "Belgium", "Netherlands", "Holland", "Poland", "Bulgaria",
+                                        "Norway", "Denmark", "Greece", "Hungary", "Austria", "Switzerland",
+                                        "Luxembourg", "Slovenia", "Slovakia", "Czech Republic", "Czech",
+                                        "Estonia", "Latvia", "Lithuania", "Malta", "Iceland", "Liechtenstein",
+                                        "Finland", "Sweden", "Croatia", "Romania", "Cyprus"],
+        "applicant_type": "job_holder",
+        "business": null,
+        "job": {
+          "salary_min": 120000,
+          "salary_in_bank": true
+        },
+        "tax_filer": false,
+        "annual_income_min": 1400000,
+        "closing_balance_min": 1000000,
+        "travel_history": {
+          "countries_min": 0,
+          "has_top_tier_visa": false,
+          "last_travel_gap_years_max": 10
+        },
+        "previous_schengen_rejection": {
+          "has_rejection": false
+        },
+        "age_min": 18,
+        "age_max": 25
+      },
+      "success_ratio": 20,
+      "strengths": [],
+      "recommendations": ["Build travel history before applying.", "Consider non-Schengen destinations first."],
+      "application_strategy": "Avoid Schengen application for now.",
+      "required_documents": ["Passport", "CNIC"]
+    }
+  ]
+  
