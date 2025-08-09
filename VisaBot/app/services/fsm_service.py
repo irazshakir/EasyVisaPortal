@@ -135,6 +135,20 @@ class VisaEvaluationFSM:
                 return True
         
         return False
+
+    def _has_target_countries_in_travel(self, travel_history: Any) -> bool:
+        """Check if travel history includes USA/UK/Canada/Australia related mentions."""
+        target_countries = [
+            "usa", "united states", "america", "uk", "united kingdom", "britain", "england",
+            "canada", "australia"
+        ]
+        if isinstance(travel_history, str):
+            tl = travel_history.lower().strip()
+            return any(c in tl for c in target_countries)
+        if isinstance(travel_history, list):
+            joined = " ".join([str(c).lower() for c in travel_history])
+            return any(c in joined for c in target_countries)
+        return False
     
     def _store_extracted_info(self, extracted_info: Dict[str, Any]) -> List[str]:
         """
@@ -235,12 +249,25 @@ class VisaEvaluationFSM:
             questions_answered.append("last_travel_year")
             logger.info(f"Stored last travel year: {last_travel_year_info['value']}")
         
-        # Store valid visa information
+        # Store valid visa information (guarded to avoid false positives outside context)
         valid_visa_info = extracted_info.get("valid_visa", {})
         if valid_visa_info.get("value") is not None and valid_visa_info.get("confidence", 0) >= 0.7:
-            self.answers["valid_visa"] = valid_visa_info["value"]
-            questions_answered.append("valid_visa")
-            logger.info(f"Stored valid visa: {valid_visa_info['value']}")
+            can_store_valid = False
+            if self.current_state == FSMStates.ASK_VALID_VISA:
+                can_store_valid = True
+            else:
+                # Allow storing only if travel history contains heavy countries
+                th = self.answers.get("travel_history", "")
+                if self._has_target_countries_in_travel(th):
+                    can_store_valid = True
+            if can_store_valid:
+                self.answers["valid_visa"] = valid_visa_info["value"]
+                questions_answered.append("valid_visa")
+                logger.info(f"Stored valid visa (guarded): {valid_visa_info['value']}")
+            else:
+                logger.info(
+                    f"Ignored valid_visa from extraction outside context. value: {valid_visa_info.get('value')}"
+                )
         
         # Store Schengen rejection information
         schengen_rejection_info = extracted_info.get("schengen_rejection", {})
@@ -1239,16 +1266,14 @@ class FSMService:
                     answered_questions.append("last_travel_year")
             elif fsm.current_state == FSMStates.ASK_VALID_VISA:
                 if "valid_visa" not in answered_questions:  # Only store if not already stored by extracted_info
-                    # Handle valid visa information more robustly
                     input_lower = user_input.lower().strip()
                     if "yes" in input_lower:
                         fsm.answers["valid_visa"] = True
                     elif "no" in input_lower:
                         fsm.answers["valid_visa"] = False
                     else:
-                        # Store the response as is for later processing
                         fsm.answers["valid_visa"] = user_input
-                    logger.info(f"Stored valid visa answer: {user_input}")
+                    logger.info(f"Stored valid visa answer (explicit state): {user_input}")
                     answered_questions.append("valid_visa")
             elif fsm.current_state == FSMStates.ASK_SCHENGEN_REJECTION:
                 if "schengen_rejection" not in answered_questions:  # Only store if not already stored by extracted_info
