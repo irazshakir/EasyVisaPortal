@@ -7,7 +7,7 @@ def build_narrative(evaluation: Dict[str, Any], answers: Dict[str, Any], target_
     country = answers.get("selected_country") or answers.get("country") or target_country
 
     success_ratio = evaluation.get("success_ratio")
-    confidence_label = evaluation.get("confidence_level") or "Medium"
+    # Confidence label intentionally not displayed per formatting request
 
     # Extract contextual facts
     profession = str(answers.get("profession", "")).strip()
@@ -30,19 +30,18 @@ def build_narrative(evaluation: Dict[str, Any], answers: Dict[str, Any], target_
     last_year = answers.get("last_travel_year")
 
     # Build content
+    # Intro
     intro = (
         f"Thanks for sharing your details. Based on your information, here’s our assessment"
         + (f" for {country}." if country else ":")
     )
 
-    ratio_line = (
-        f"Current success ratio: {success_ratio}% (Confidence: {confidence_label})."
-        if success_ratio is not None else ""
-    )
+    # Success Ratio line (confidence removed as requested)
+    ratio_line = f"**Success Ratio:** {success_ratio}%" if success_ratio is not None else ""
 
     # 1) Visa type/purpose guidance (use overall recommendation as cue)
     overall = evaluation.get("overall_recommendation", "")
-    p1 = overall
+    rec_primary = overall
 
     # 2) Travel perspective (simple surface)
     if has_travel:
@@ -79,32 +78,38 @@ def build_narrative(evaluation: Dict[str, Any], answers: Dict[str, Any], target_
         + " ".join(ties_parts)
     ).strip()
 
-    # Scenario/rubric recommendations
+    # Scenario/rubric recommendations (bulleted list)
     scenario_recs = evaluation.get("recommendations", []) or []
     recs = [f"- {r}" for r in scenario_recs[:4]]
 
     # Strategy
     strategy = evaluation.get("application_strategy")
 
-    points = [
-        f"1 - {p1}",
-        f"2 - {travel_line}",
-        f"3 - {purpose_line}",
-        f"4 - {ties_line}",
-    ]
-
-    parts = [intro]
+    # Assemble with Markdown-friendly formatting
+    parts: List[str] = []
+    parts.append(intro)
     if ratio_line:
         parts.append(ratio_line)
-    parts.extend(points)
+
+    # Recommendations section
+    parts.append("\n**Recommendations**")
+    parts.append(f"1. {rec_primary}")
+    parts.append(f"2. {travel_line}")
+    parts.append(f"3. {purpose_line}")
+    parts.append(f"4. {ties_line}")
+
+    # Additional tips section
     if recs:
-        parts.append("Additionally, keep in mind:")
+        parts.append("\n**Additionally, keep in mind:**")
         parts.extend(recs)
+
+    # Application strategy (optional, kept at the end)
     if strategy:
+        parts.append("\n**Application Strategy**")
         parts.append(strategy)
 
     parts.append(
-        "These are our recommendations. You can now generate a tailored checklist or discuss with our AI Consultant for file preparation."
+        "\nThese are our recommendations. You can now generate a tailored checklist or discuss with our AI Consultant for file preparation."
     )
 
     return "\n".join(parts)

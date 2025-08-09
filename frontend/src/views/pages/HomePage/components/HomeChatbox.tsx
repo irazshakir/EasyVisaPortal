@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Input, Button } from '@/components/ui'
 import { PiPaperPlaneRightFill, PiQuestionMarkFill, PiArrowClockwiseFill } from 'react-icons/pi'
 import visaBotService from '@/services/VisaBotService'
+import ReactMarkdown from 'react-markdown'
 
 interface Message {
     id: string
@@ -184,7 +185,21 @@ const HomeChatbox = () => {
                                     : 'bg-gray-100 text-gray-900'
                             }`}
                         >
-                            <p className="text-sm">{message.content}</p>
+                            {message.isUser ? (
+                                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                            ) : (
+                                <div className="prose prose-sm max-w-none">
+                                    <ReactMarkdown
+                                        components={{
+                                            a: ({ node, ...props }) => (
+                                                <a target="_blank" rel="noopener noreferrer" {...props} />
+                                            ),
+                                        }}
+                                    >
+                                        {message.content}
+                                    </ReactMarkdown>
+                                </div>
+                            )}
                             <p className={`text-xs mt-1 ${
                                 message.isUser ? 'text-white/70' : 'text-gray-500'
                             }`}>
